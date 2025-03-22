@@ -2,7 +2,12 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
-import prisma from './config/prisma';
+import {prisma } from './config/prisma';
+import session from 'express-session';
+import passport from 'passport';
+
+import authRouter from './routes/auth';
+import { authenticate } from './middlewares/auth.middleware';
 
 
 // Load environment variables
@@ -14,6 +19,28 @@ const app = express();
 app.use(express.json()); 
 app.use(cors()); 
 app.use(morgan('dev')); 
+
+
+
+//auth
+
+
+
+
+
+// Routes
+app.use('/auth', authRouter);
+
+
+// Protected route example
+// app.get('/profile', authenticate, (req, res) => {
+//   res.json({ user: req.user });
+// });
+
+
+
+
+
 
 
 
