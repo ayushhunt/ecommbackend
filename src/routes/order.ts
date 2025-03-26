@@ -26,10 +26,10 @@ router.get('/user/orders/:id', authenticate, getUserOrderById);
 router.patch('/user/orders/:id/cancel', authenticate, cancelOrder);
 
 // ===== ADMIN ROUTES =====
-router.get('/admin/orders', authenticate, authenticate, getAllOrders);
-router.get('/admin/orders/statistics', authenticate, authenticate, getOrderStatistics);
-router.get('/admin/orders/:id', authenticate, authenticate, getOrderById);
-router.patch('/admin/orders/:id/status', authenticate, authenticate, updateOrderStatus);
-router.delete('/admin/orders/:id', authenticate, authenticate, deleteOrder);
+router.get('/admin/orders', authenticate, getAllOrders);
+router.get('/admin/orders/statistics', authenticate, getOrderStatistics);
+router.get('/admin/orders/:id', authenticate, getOrderById);
+router.patch('/admin/orders/:id/status', authenticate, updateOrderStatus);
+router.delete('/admin/orders/:id', authenticate,deleteOrder);
 
 export default router;

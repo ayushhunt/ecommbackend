@@ -7,20 +7,98 @@ import mongoose from 'mongoose';
 // ===== USER ENDPOINTS =====
 
 // Create a new order
-export const createOrder = async (req: Request, res: Response) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+// export const createOrder = async (req: Request, res: Response) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
 
+//   try {
+//     const { items, paymentMethod, shippingAddress } = req.body;
+//     const userId = req.user.id; // Assuming user ID is available from authentication middleware
+
+//     // Validate items and calculate total amount
+//     let totalAmount = 0;
+//     const orderItems = [];
+
+//     for (const item of items) {
+//       const product = await Product.findById(item.product).session(session);
+      
+//       if (!product) {
+//         throw new Error(`Product not found with ID: ${item.product}`);
+//       }
+      
+//       if (product.stock < item.quantity) {
+//         throw new Error(`Insufficient stock for product: ${product.name}`);
+//       }
+      
+//       // Update product stock
+//       await Product.findByIdAndUpdate(
+//         item.product,
+//         { $inc: { stock: -item.quantity } },
+//         { session }
+//       );
+      
+//       // Add item to order with current price
+//       orderItems.push({
+//         product: item.product,
+//         quantity: item.quantity,
+//         price: product.price
+//       });
+      
+//       totalAmount += product.price * item.quantity;
+//     }
+
+//     // Create new order
+//     const order = new Order({
+//       user: userId,
+//       items: orderItems,
+//       totalAmount,
+//       paymentMethod,
+//       shippingAddress,
+//       paymentStatus: PaymentStatus.PENDING,
+//       deliveryStatus: DeliveryStatus.PENDING
+//     });
+
+//     await order.save({ session });
+//     await session.commitTransaction();
+
+//     // Populate product details for response
+//     const populatedOrder = await Order.findById(order._id).populate({
+//       path: 'items.product',
+//       select: 'name images'
+//     });
+
+//     res.status(201).json({
+//       success: true,
+//       message: 'Order created successfully',
+//       data: populatedOrder
+//     });
+//     return;
+//   } catch (error: any) {
+//     await session.abortTransaction();
+    
+//     res.status(400).json({
+//       success: false,
+//       message: error.message || 'Failed to create order',
+//       error: error
+//     });
+//     return;
+//   } finally {
+//     session.endSession();
+//   }
+// };
+
+export const createOrder = async (req: Request, res: Response) => {
   try {
     const { items, paymentMethod, shippingAddress } = req.body;
-    const userId = req.user.id; // Assuming user ID is available from authentication middleware
+    console.log(req.user.id)
+    const userId = req.user.id;
 
-    // Validate items and calculate total amount
     let totalAmount = 0;
     const orderItems = [];
 
-    for (const item of items) {
-      const product = await Product.findById(item.product).session(session);
+    // Use Promise.all for concurrent product checks
+    await Promise.all(items.map(async (item:any) => {
+      const product = await Product.findById(item.product);
       
       if (!product) {
         throw new Error(`Product not found with ID: ${item.product}`);
@@ -29,22 +107,28 @@ export const createOrder = async (req: Request, res: Response) => {
       if (product.stock < item.quantity) {
         throw new Error(`Insufficient stock for product: ${product.name}`);
       }
-      
-      // Update product stock
-      await Product.findByIdAndUpdate(
-        item.product,
-        { $inc: { stock: -item.quantity } },
-        { session }
+    }));
+
+    // Perform stock updates and order item preparation
+    for (const item of items) {
+      // Atomic update to ensure stock reduction
+      const updatedProduct = await Product.findByIdAndUpdate(
+        item.product, 
+        { $inc: { stock: -item.quantity } }, 
+        { new: true }
       );
-      
-      // Add item to order with current price
+
+      if (!updatedProduct) {
+        throw new Error(`Failed to update stock for product: ${item.product}`);
+      }
+
       orderItems.push({
         product: item.product,
         quantity: item.quantity,
-        price: product.price
+        price: updatedProduct.price
       });
-      
-      totalAmount += product.price * item.quantity;
+
+      totalAmount += updatedProduct.price * item.quantity;
     }
 
     // Create new order
@@ -58,8 +142,7 @@ export const createOrder = async (req: Request, res: Response) => {
       deliveryStatus: DeliveryStatus.PENDING
     });
 
-    await order.save({ session });
-    await session.commitTransaction();
+    await order.save();
 
     // Populate product details for response
     const populatedOrder = await Order.findById(order._id).populate({
@@ -73,20 +156,26 @@ export const createOrder = async (req: Request, res: Response) => {
       data: populatedOrder
     });
     return;
+
   } catch (error: any) {
-    await session.abortTransaction();
-    
+    // Rollback stock updates (optional, but provides additional safety)
+    if (error.message.includes('Insufficient stock') || error.message.includes('Product not found')) {
+      for (const item of req.body.items) {
+        await Product.findByIdAndUpdate(
+          item.product, 
+          { $inc: { stock: item.quantity } }
+        );
+      }
+    }
+
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to create order',
       error: error
     });
     return;
-  } finally {
-    session.endSession();
   }
 };
-
 // Get all orders for current user
 export const getUserOrders = async (req: Request, res: Response) => {
   try {
@@ -174,16 +263,77 @@ export const getUserOrderById = async (req: Request, res: Response) => {
 };
 
 // Cancel an order (user)
-export const cancelOrder = async (req: Request, res: Response) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+// export const cancelOrder = async (req: Request, res: Response) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
   
+//   try {
+//     const { id } = req.params;
+//     const userId = req.user.id; // From auth middleware
+    
+//     const order = await Order.findOne({ _id: id, user: userId }).session(session);
+    
+//     if (!order) {
+//       res.status(404).json({
+//         success: false,
+//         message: 'Order not found'
+//       });
+//       return;
+//     }
+    
+//     // Only allow cancellation if order is still pending
+//     if (order.deliveryStatus !== DeliveryStatus.PENDING) {
+//       res.status(400).json({
+//         success: false,
+//         message: `Cannot cancel order in '${order.deliveryStatus}' status`
+//       });
+//       return;
+//     }
+    
+//     // Update order status
+//     order.deliveryStatus = DeliveryStatus.CANCELLED;
+//     await order.save({ session });
+    
+//     // Restore product stock
+//     for (const item of order.items) {
+//       await Product.findByIdAndUpdate(
+//         item.product,
+//         { $inc: { stock: item.quantity } },
+//         { session }
+//       );
+//     }
+    
+//     await session.commitTransaction();
+    
+//     res.status(200).json({
+//       success: true,
+//       message: 'Order cancelled successfully',
+//       data: order
+//     });
+//     return;
+//   } catch (error: any) {
+//     await session.abortTransaction();
+    
+//     res.status(400).json({
+//       success: false,
+//       message: error.message || 'Failed to cancel order',
+//       error: error
+//     });
+//     return;
+//   } finally {
+//     session.endSession();
+//   }
+// };
+
+
+export const cancelOrder = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.user.id; // From auth middleware
-    
-    const order = await Order.findOne({ _id: id, user: userId }).session(session);
-    
+
+    // Find the order
+    const order = await Order.findOne({ _id: id, user: userId });
+
     if (!order) {
       res.status(404).json({
         success: false,
@@ -191,7 +341,7 @@ export const cancelOrder = async (req: Request, res: Response) => {
       });
       return;
     }
-    
+
     // Only allow cancellation if order is still pending
     if (order.deliveryStatus !== DeliveryStatus.PENDING) {
       res.status(400).json({
@@ -200,42 +350,38 @@ export const cancelOrder = async (req: Request, res: Response) => {
       });
       return;
     }
-    
+
     // Update order status
     order.deliveryStatus = DeliveryStatus.CANCELLED;
-    await order.save({ session });
-    
-    // Restore product stock
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(
-        item.product,
-        { $inc: { stock: item.quantity } },
-        { session }
-      );
-    }
-    
-    await session.commitTransaction();
-    
+    await order.save();
+
+    // Use Promise.all to restore product stock concurrently
+    const stockRestorePromises = order.items.map(item => 
+      Product.findByIdAndUpdate(
+        item.product, 
+        { $inc: { stock: item.quantity } }
+      )
+    );
+
+    // Wait for all stock restoration operations to complete
+    await Promise.all(stockRestorePromises);
+
     res.status(200).json({
       success: true,
       message: 'Order cancelled successfully',
       data: order
     });
     return;
+
   } catch (error: any) {
-    await session.abortTransaction();
-    
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to cancel order',
       error: error
     });
     return;
-  } finally {
-    session.endSession();
   }
 };
-
 // ===== ADMIN ENDPOINTS =====
 
 // Get all orders (admin)
@@ -281,14 +427,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
-      .populate({
-        path: 'user',
-        select: 'name email'
-      })
-      .populate({
-        path: 'items.product',
-        select: 'name images'
-      });
+      .select('user createdAt')
     
     const totalOrders = await Order.countDocuments(filter);
     
@@ -329,10 +468,7 @@ export const getOrderById = async (req: Request, res: Response) => {
     const { id } = req.params;
     
     const order = await Order.findById(id)
-      .populate({
-        path: 'user',
-        select: 'name email phone'
-      })
+      .select('user createdAt')
       .populate({
         path: 'items.product',
         select: 'name description images'

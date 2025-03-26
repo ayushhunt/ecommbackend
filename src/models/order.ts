@@ -21,7 +21,7 @@ interface IOrderItem {
 }
 
 interface IOrder extends Document {
-  user: Types.ObjectId;
+  user: string;
   items: IOrderItem[];
   totalAmount: number;
   paymentStatus: PaymentStatus;
@@ -40,7 +40,7 @@ interface IOrder extends Document {
 }
 
 const orderSchema = new Schema<IOrder>({
-  user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  user: { type: String, ref: 'User', required: true },
   items: [{
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     quantity: { type: Number, required: true, min: 1 },

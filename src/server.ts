@@ -10,6 +10,7 @@ import authRouter from './routes/auth';
 import productRouter from './routes/product';
 import { authenticate } from './middlewares/auth.middleware';
 import dbConnect from './config/mdb';
+import orderRouter from './routes/order';
 
 
 // Load environment variables
@@ -34,7 +35,7 @@ app.use(morgan('dev'));
 // Routes
 app.use('/auth', authRouter);
 app.use('/v1', authenticate, productRouter);
-
+app.use('/v1',orderRouter)
 
 // Protected route example
 // app.get('/profile', authenticate, (req, res) => {

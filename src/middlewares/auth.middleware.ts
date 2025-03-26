@@ -39,7 +39,7 @@ export const authenticate = async (
     }
 
     // Attach user to request
-    req.user = user;
+    req.user = { id: user.id };
     next();
   } catch (error) {
     res.status(401).json({ message: 'Invalid token' });
