@@ -4,16 +4,27 @@ import jwt from 'jsonwebtoken';
 import { JWT_CONFIG } from '../config/auth';
 import { prisma } from '../config/prisma';
 
+// Extend the type of Request to ensure type safety
+declare module 'express-serve-static-core' {
+  interface Request {
+    user: {
+      id: string;
+      // Add other properties from your User type that you'll use
+    }
+  }
+}
+
 export const authenticate = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+)  => {
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ message: 'Authentication required' });
+    res.status(401).json({ message: 'Authentication required' });
+    return;
   }
 
   try {
@@ -23,7 +34,8 @@ export const authenticate = async (
     });
 
     if (!user) {
-      return res.status(401).json({ message: 'User not found' });
+      res.status(401).json({ message: 'User not found' });
+      return;
     }
 
     // Attach user to request

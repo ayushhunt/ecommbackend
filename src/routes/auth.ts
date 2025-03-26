@@ -1,6 +1,5 @@
 // src/routes/auth.route.ts
 import express from 'express';
-import passport from 'passport';
 import {
   register,
   login,
