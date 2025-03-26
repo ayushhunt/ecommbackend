@@ -19,3 +19,53 @@ model Test {
   name  String
   email String
 }
+
+model User {
+  id            String    @id @default(uuid())
+  provider      String    // "email", "google", "github"
+  providerId    String?   // Nullable for email users
+  email         String    @unique
+  passwordHash  String?   // Nullable for SSO users
+  verified      Boolean   @default(false)
+  name          String?
+  role          String    @default("user") // "user", "admin"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  addresses     Address[]
+  Verification  Verification[]
+  RefreshToken RefreshToken[]
+}
+
+
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  street    String
+  city      String
+  state     String
+  zip       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+
+model Verification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+
