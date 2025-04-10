@@ -14,6 +14,7 @@ import orderRouter from './routes/order';
 import reviewRouter from './routes/review';
 import cartRouter from './routes/cart';
 import wishlistRouter from './routes/wishlist'
+import recommendationRouter from './routes/recommendation';
 
 // Load environment variables
 dotenv.config();
@@ -31,8 +32,9 @@ app.use('/auth', authRouter);
 app.use('/v1',  productRouter);
 app.use('/v1',orderRouter)
 app.use('/v1',reviewRouter);
-app.use("/v1",cartRouter)
-app.use("/v1",wishlistRouter);
+app.use("/v1",authenticate,cartRouter)
+app.use("/v1/wish",wishlistRouter);
+app.use("/v1/rec",recommendationRouter);
 
 // Protected route example
 // app.get('/profile', authenticate, (req, res) => {

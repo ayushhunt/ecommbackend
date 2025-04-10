@@ -209,13 +209,13 @@ export const getProductReviews = async (req: Request, res: Response) => {
       .sort(sortOptions)
       .skip(skip)
       .limit(limitNum)
-      .populate('user', 'name'); // Assuming user has a name field
+     ; // Assuming user has a name field
     
     const totalReviews = await Review.countDocuments({ product: productId });
     
     // Calculate stats
     const stats = await Review.aggregate([
-      { $match: { product: new mongoose.Types.ObjectId(productId) } },
+      { $match: { product: productId } },
       { $group: {
         _id: null,
         avgRating: { $avg: '$rating' },
@@ -305,8 +305,7 @@ export const getAllReviews = async (req: Request, res: Response) => {
       .sort(sortOptions)
       .skip(skip)
       .limit(limitNum)
-      .populate('product', 'name images')
-      .populate('user', 'name email');
+      .populate('product', 'name images');
     
     const totalReviews = await Review.countDocuments(filter);
     

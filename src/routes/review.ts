@@ -32,7 +32,7 @@ router.delete('/reviews/:id', authenticate, deleteReview);
 router.get('/products/:productId/reviews', getProductReviews);
 
 // ===== ADMIN ROUTES =====
-router.get('/admin/reviews', authenticate, authenticate, getAllReviews);
-router.delete('/admin/reviews/:id', authenticate, authenticate, adminDeleteReview);
+router.get('/admin/reviews', authenticate,  getAllReviews);
+router.delete('/admin/reviews/:id', authenticate,  adminDeleteReview);
 
 export default router;
