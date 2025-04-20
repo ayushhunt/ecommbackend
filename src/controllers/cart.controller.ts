@@ -32,66 +32,76 @@ export const getCart = async (req: Request, res: Response) => {
 };
 
 // Add item to cart
-export const addItemToCart = async (req: Request, res: Response) => {
+export const addItemsToCart = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const { productId, name, price, quantity = 1, image } = req.body;
-    
+    const products: ICartItem[] = req.body.products; // Expecting array of products
+
     // Validate input
-    if (!productId || !name || !price || !image) {
+    if (!Array.isArray(products) || products.length === 0) {
       res.status(400).json({
         success: false,
-        message: 'Missing required fields'
+        message: 'Products array is required and should not be empty'
       });
       return;
     }
-    
+
+    for (const product of products) {
+      const { productId, name, price, image } = product;
+      if (!productId || !name || !price || !image) {
+        res.status(400).json({
+          success: false,
+          message: 'Each product must include productId, name, price, and image'
+        });
+        return;
+      }
+    }
+
     let cart = await Cart.findOne({ userId });
-    
+
     if (!cart) {
-      // Create new cart if it doesn't exist
       cart = new Cart({
         userId,
         items: [],
         totalPrice: 0
       });
     }
-    
-    // Check if item already exists in cart
-    const itemIndex = cart.items.findIndex(item => item.productId === productId);
-    
-    if (itemIndex > -1) {
-      // Update existing item quantity
-      cart.items[itemIndex].quantity += quantity;
-    } else {
-      // Add new item to cart
-      const newItem: ICartItem = {
-        productId,
-        name,
-        price,
-        quantity,
-        image
-      };
-      
-      cart.items.push(newItem);
+
+    for (const product of products) {
+      const { productId, name, price, quantity = 1, image } = product;
+      const itemIndex = cart.items.findIndex(item => item.productId === productId);
+
+      if (itemIndex > -1) {
+        cart.items[itemIndex].quantity += quantity;
+      } else {
+        cart.items.push({
+          productId,
+          name,
+          price,
+          quantity,
+          image
+        });
+      }
     }
-    
+
     await cart.save();
-    
+
     res.status(200).json({
       success: true,
-      message: 'Item added to cart',
+      message: 'Items added to cart',
       data: cart
     });
-  } catch (error:any) {
-    console.error('Error adding item to cart:', error);
+
+  } catch (error: any) {
+    console.error('Error adding items to cart:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to add item to cart',
+      message: 'Failed to add items to cart',
       error: error.message
     });
   }
 };
+
 
 // Update cart item quantity
 export const updateCartItem = async (req: Request, res: Response) => {

@@ -20,8 +20,9 @@ export const authenticate = async (
   next: NextFunction
 )  => {
   const authHeader = req.headers.authorization;
+  console.log('authHeader', authHeader);
   const token = authHeader?.split(' ')[1];
-
+  console.log('token', token);
   if (!token) {
     res.status(401).json({ message: 'Authentication required' });
     return;
@@ -29,10 +30,11 @@ export const authenticate = async (
 
   try {
     const decoded = jwt.verify(token, JWT_CONFIG.accessTokenSecret) as { userId: string };
+    console.log('decoded', decoded);
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId }
     });
-
+    console.log('user', user);
     if (!user) {
       res.status(401).json({ message: 'User not found' });
       return;

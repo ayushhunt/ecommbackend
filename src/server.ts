@@ -3,8 +3,6 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
 import {prisma } from './config/prisma';
-import session from 'express-session';
-import passport from 'passport';
 
 import authRouter from './routes/auth';
 import productRouter from './routes/product';
@@ -32,7 +30,7 @@ app.use('/auth', authRouter);
 app.use('/v1',  productRouter);
 app.use('/v1',orderRouter)
 app.use('/v1',reviewRouter);
-app.use("/v1",authenticate,cartRouter)
+app.use("/v1",cartRouter)
 app.use("/v1/wish",wishlistRouter);
 app.use("/v1/rec",recommendationRouter);
 
