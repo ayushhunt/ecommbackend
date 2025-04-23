@@ -1,10 +1,11 @@
 // src/routes/auth.route.ts
 import express from 'express';
-import passport from 'passport';
 import {
   register,
   login,
   refreshToken,
+  googleAuth,
+  googleCallback,
 } from '../controllers/auth.controller';
 
 const router = express.Router();
@@ -15,11 +16,7 @@ router.post('/login', login);
 router.post('/refresh-token',refreshToken)
 
 // // Google authentication
-// router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-// router.get(
-//   '/google/callback',
-//   passport.authenticate('google', { failureRedirect: '/login' }),
-//   googleCallback
-// );
+router.get('/google',googleAuth);
+router.get('/google/callback',googleCallback);
 
 export default router;
