@@ -4,8 +4,6 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/prisma';
 import { JWT_CONFIG, BCRYPT_ROUNDS } from '../config/auth';
-import passport from 'passport';
-import { token } from 'morgan';
 import { parse, serialize } from 'cookie';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -95,7 +93,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const accessToken = jwt.sign(
       { userId: user.id },
       JWT_CONFIG.accessTokenSecret,
-      { expiresIn: '1m' }
+      { expiresIn: '15m' }
     );
     const existingToken = await prisma.refreshToken.findFirst({
       where: {

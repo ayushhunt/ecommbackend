@@ -29,6 +29,7 @@ model User {
   verified      Boolean   @default(false)
   name          String?
   role          String    @default("user") // "user", "admin"
+  phoneNumber   String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   addresses     Address[]
@@ -42,6 +43,7 @@ model Address {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   street    String
+  phoneNumber   String?
   city      String
   state     String
   zip       String
@@ -63,6 +65,7 @@ model Verification {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
+  type     String   
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())

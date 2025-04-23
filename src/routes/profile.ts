@@ -4,17 +4,22 @@ import express from 'express';
 
 
 import {authenticate }from '../middlewares/auth.middleware';
-import { emailVerification, emailVerificationToken, getAddress, getAddressById, getProfile, updateProfile } from '../controllers/profile.controller';
+import { addAddress, deleteAddress, emailVerification, emailVerificationToken, getAddress, getAddressById, getProfile, updateAddress, updateProfile } from '../controllers/profile.controller';
 
 const router = express.Router();
 
-// Cart routes
-router.get('/',authenticate, getProfile);
-router.post('/add',authenticate, updateProfile);
-router.put('/update/:productId', emailVerification);
-router.delete('/remove/:productId', emailVerificationToken);
-router.delete('/clear', getAddress);
-router.post('/checkout', getAddressById);
-router.post('/checkout', addAddress);
-router.post('/checkout', updateAddress);
-router.post('/checkout', deleteAddress);
+// Profile routes
+router.get('/', getProfile);
+router.patch('/update', updateProfile);
+
+router.get('/addresses', getAddress);
+router.get('/addresses/:id', getAddressById);
+router.post('/addresses', addAddress);
+router.patch('/addresses/:id', updateAddress);
+router.delete('/addresses/:id', deleteAddress);
+
+
+router.post('/verify-email/request', emailVerification);
+router.post('/verify-email/:token', emailVerificationToken);
+
+export default router;

@@ -17,6 +17,7 @@ const addressSchema = z.object({
   city: z.string(),
   state: z.string(),
   zip: z.string(),
+  phoneNumber: z.string().optional(),
 });
 
 // Get user profile
@@ -58,10 +59,11 @@ export const updateProfile =  async (req:Request, res:Response) => {
     
     const validationResult = updateUserSchema.safeParse(req.body);
     if (!validationResult.success) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         message: 'Invalid input data', 
         errors: validationResult.error.issues 
       });
+      return;
     }
     
     const { name, phoneNumber, email } = validationResult.data;
@@ -247,13 +249,14 @@ export const addAddress = async (req:Request, res:Response) => {
       return;
     }
     
-    const { street, city, state, zip } = validationResult.data;
+    const { street, city, state,phoneNumber, zip } = validationResult.data;
     
     const newAddress = await prisma.address.create({
       data: {
         street,
         city,
         state,
+        phoneNumber,
         zip,
         userId,
       },
@@ -281,7 +284,7 @@ export const updateAddress =  async (req:Request, res:Response) => {
       return;
     }
     
-    const { street, city, state, zip } = validationResult.data;
+    const { street, city, state,phoneNumber, zip } = validationResult.data;
     
     // Check if address exists and belongs to user
     const existingAddress = await prisma.address.findFirst({
@@ -302,6 +305,7 @@ export const updateAddress =  async (req:Request, res:Response) => {
         street,
         city,
         state,
+        phoneNumber,
         zip,
         updatedAt: new Date(),
       },
