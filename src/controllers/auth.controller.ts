@@ -1,6 +1,6 @@
 // src/controllers/auth.controller.ts
 import { Request, Response } from 'express';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/prisma';
 import { JWT_CONFIG, BCRYPT_ROUNDS } from '../config/auth';
@@ -121,13 +121,22 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Set HttpOnly refresh token cookie
-    res.setHeader('Set-Cookie', serialize('accessToken', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 60 // 1 minute
-    }));
+    res.setHeader('Set-Cookie', [
+      serialize('accessToken', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 60,
+      }),
+      serialize('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+      }),
+    ]);    
     // Send access token and user info
     res.status(200).json({
       id: user.id,
