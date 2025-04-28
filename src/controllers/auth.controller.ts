@@ -93,7 +93,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const accessToken = jwt.sign(
       { userId: user.id },
       JWT_CONFIG.accessTokenSecret,
-      { expiresIn: '15m' }
+      { expiresIn: '1m' }
     );
     const existingToken = await prisma.refreshToken.findFirst({
       where: {
@@ -121,20 +121,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Set HttpOnly refresh token cookie
-    res.setHeader('Set-Cookie', serialize('refreshToken', refreshToken, {
+    res.setHeader('Set-Cookie', serialize('accessToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      path: '/auth/refresh-token', // your refresh endpoint
-      maxAge: 7 * 24 * 60 * 60, // in seconds
+      path: '/',
+      maxAge: 60 // 1 minute
     }));
-
     // Send access token and user info
     res.status(200).json({
       id: user.id,
       name: user.name,
-      email: user.email,
-      accessToken,
+      email: user.email
     });
 
   } catch (error) {
@@ -147,9 +145,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 export const refreshToken = async (req: Request, res: Response) => {
   try {
     // Extract refresh token from cookie (or req.body if you prefer that)
+    console.log('Request headers:', req.headers.cookie);
   const cookies = parse(req.headers.cookie || '');
   const refreshToken = cookies.refreshToken;
-
+  console.log('Refresh token:', refreshToken);
   if (!refreshToken) {
     res.status(401).json({ message: 'Refresh token not found' });
     return;
@@ -178,7 +177,7 @@ export const refreshToken = async (req: Request, res: Response) => {
     const accessToken = jwt.sign(
       { userId: decoded.userId },
       JWT_CONFIG.accessTokenSecret,
-      { expiresIn: '15m' }
+      { expiresIn: '1m' }
     );
 
     // ❌ Do NOT delete or rotate the refresh token
