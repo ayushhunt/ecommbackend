@@ -13,6 +13,7 @@ import reviewRouter from './routes/review';
 import cartRouter from './routes/cart';
 import wishlistRouter from './routes/wishlist'
 import recommendationRouter from './routes/recommendation';
+import profileRouter from './routes/profile';
 
 // Load environment variables
 dotenv.config();
@@ -22,7 +23,12 @@ const app = express();
 
 // Middleware
 app.use(express.json()); 
-app.use(cors()); 
+app.use(cors({
+    origin: "http://localhost:3003",
+    credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+})); 
 app.use(morgan('dev')); 
 
 // Routes
@@ -33,6 +39,7 @@ app.use('/v1',reviewRouter);
 app.use("/v1",cartRouter)
 app.use("/v1/wish",wishlistRouter);
 app.use("/v1/rec",recommendationRouter);
+app.use("/v1/user",authenticate,profileRouter)
 
 // Protected route example
 // app.get('/profile', authenticate, (req, res) => {

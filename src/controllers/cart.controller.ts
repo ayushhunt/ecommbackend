@@ -45,10 +45,10 @@ export const addItemsToCart = async (req: Request, res: Response) => {
       });
       return;
     }
-
+    console.log('products', products);
     for (const product of products) {
-      const { productId, name, price, image } = product;
-      if (!productId || !name || !price || !image) {
+      const { productId, name, price, image,quantity } = product;
+      if (!productId || !name || !price || !image || !quantity) {
         res.status(400).json({
           success: false,
           message: 'Each product must include productId, name, price, and image'
