@@ -6,6 +6,7 @@ import {
   refreshToken,
   googleAuth,
   googleCallback,
+  logout,
 } from '../controllers/auth.controller';
 
 const router = express.Router();
@@ -13,6 +14,7 @@ const router = express.Router();
 // Local authentication
 router.post('/register', register);
 router.post('/login', login);
+router.post('/logout', logout);
 router.post('/refresh-token',refreshToken)
 
 // // Google authentication

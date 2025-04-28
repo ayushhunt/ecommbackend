@@ -361,3 +361,45 @@ export const googleCallback= async (req: Request, res: Response) => {
     res.status(500).send('Authentication failed.');
   }
 };
+
+
+
+export const logout = async (req: Request, res: Response) => {
+  try {
+    // Get refresh token from cookies
+    const cookies = parse(req.headers.cookie || '');
+    const refreshToken = cookies.refreshToken;
+
+    if (refreshToken) {
+      // Delete refresh token from database
+      await prisma.refreshToken.deleteMany({
+        where: {
+          token: refreshToken
+        }
+      });
+    }
+
+    // Clear cookies by setting them to expire
+    res.setHeader('Set-Cookie', [
+      serialize('accessToken', '', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        expires: new Date(0), // Immediately expire the cookie
+      }),
+      serialize('refreshToken', '', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        expires: new Date(0), // Immediately expire the cookie
+      }),
+    ]);
+
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ message: 'Error during logout' });
+  }
+};
