@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
 import  {Cart, ICartItem } from '../models/cart';
+import { Product } from '../models/product';
+import { DeliveryStatus, Order, PaymentStatus } from '../models/order';
+import * as crypto from 'crypto';
+import Razorpay from 'razorpay';
+
 
 // Get user cart
 export const getCart = async (req: Request, res: Response) => {
@@ -228,11 +233,16 @@ export const clearCart = async (req: Request, res: Response) => {
 };
 
 // Checkout cart (create order from cart)
-export const checkoutCart = async (req: Request, res: Response) => {
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID as string,
+  key_secret: process.env.RAZORPAY_KEY_SECRET as string
+});
+
+export const initiateCheckout = async (req: Request, res: Response) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id; 
     const { shippingAddress, paymentMethod } = req.body;
-    
     // Validate input
     if (!shippingAddress || !paymentMethod) {
       res.status(400).json({
@@ -242,9 +252,10 @@ export const checkoutCart = async (req: Request, res: Response) => {
       return;
     }
     
+    // Get cart items
     const cart = await Cart.findOne({ userId });
     
-    if (!cart || cart.items.length === 0) {
+    if (!cart || !cart.items || cart.items.length === 0) {
       res.status(400).json({
         success: false,
         message: 'Cart is empty'
@@ -252,37 +263,162 @@ export const checkoutCart = async (req: Request, res: Response) => {
       return;
     }
     
-    // Here you would typically:
-    // 1. Create a new order using the cart data
-    // 2. Process payment
-    // 3. Clear the cart
+    // Fetch product details and calculate total amount
+    const orderItems = [];
+    let totalAmount = 0;
     
-    // For this example, we'll just return the cart data that would be used to create an order
-    const orderData = {
-      userId,
-      items: cart.items,
-      totalPrice: cart.totalPrice,
-      shippingAddress,
+    for (const item of cart.items) {
+      const product = await Product.findById(item.productId);
+      console.log('product', product);
+      if (!product) {
+        res.status(400).json({
+          success: false,
+          message: `Product not found: ${item.productId}`
+        });
+        return;
+      }
+      
+      // Check stock availability
+      if (product.stock < item.quantity) {
+        res.status(400).json({
+          success: false,
+          message: `Insufficient stock for product: ${product.name}`
+        });
+        return;
+      }
+      
+      const itemPrice = product.price * item.quantity;
+      totalAmount += itemPrice;
+      
+      orderItems.push({
+        product: item.productId,
+        quantity: item.quantity,
+        price: product.price,
+        name: product.name,
+        image: product.images[0]
+      });
+    }
+    const timestamp = Date.now().toString().slice(-8); // Use last 8 digits of timestamp
+    const userIdPrefix = userId.toString().slice(0, 6); // Use first 6 chars of userId
+    const receipt = `rcpt_${userIdPrefix}_${timestamp}`; 
+    // Create Razorpay order
+    const razorpayOrder = await razorpay.orders.create({
+      amount: Math.round(totalAmount * 100), // Amount in paise
+      currency: 'INR',
+      receipt: receipt,
+      notes: {
+        userId
+      }
+    });
+    // Create order in database
+    const order = new Order({
+      user: userId,
+      items: orderItems,
+      totalAmount,
       paymentMethod,
-      status: 'pending'
-    };
+      paymentStatus: PaymentStatus.PENDING,
+      deliveryStatus: DeliveryStatus.PENDING,
+      razorpayOrderId: razorpayOrder.id,
+      shippingAddress
+    });
     
-    // Clear the cart after checkout
-    cart.items = [];
-    await cart.save();
+    await order.save();
     
+    // Return data to client
     res.status(200).json({
       success: true,
-      message: 'Checkout successful',
-      data: orderData
+      data: {
+        orderId: order._id,
+        razorpayOrderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+        key: process.env.RAZORPAY_KEY_ID
+      }
     });
-  } catch (error:any) {
-    console.error('Error during checkout:', error);
+  } catch (error: any) {
+    console.error('Error initiating checkout:', error);
     res.status(500).json({
       success: false,
-      message: 'Checkout failed',
+      message: 'Failed to initiate checkout',
       error: error.message
     });
   }
 };
 
+
+
+// Verify Razorpay payment after checkout
+export const verifyPayment = async (req: Request, res: Response) => {
+  try {
+    const {
+      orderId,
+      razorpay_payment_id,
+      razorpay_order_id,
+      razorpay_signature
+    } = req.body;
+    
+    // Find the order
+    const order = await Order.findById(orderId);
+    
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+      return;
+    }
+    
+    // Verify signature
+    const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET as string);
+    hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+    const generatedSignature = hmac.digest('hex');
+    
+    if (generatedSignature !== razorpay_signature) {
+      // Update order status to failed
+      order.paymentStatus = PaymentStatus.FAILED;
+      await order.save();
+      
+      res.status(400).json({
+        success: false,
+        message: 'Invalid payment signature'
+      });
+      return;
+    }
+    
+    // Update order with payment information
+    order.razorpayPaymentId = razorpay_payment_id;
+    order.razorpaySignature = razorpay_signature;
+    order.paymentStatus = PaymentStatus.COMPLETED;
+    order.deliveryStatus = DeliveryStatus.PROCESSING;
+    order.transactionId = razorpay_payment_id;
+    await order.save();
+    
+    // Update product stock
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { stock: -item.quantity }
+      });
+    }
+    
+    // Clear the cart
+    await Cart.findOneAndUpdate({ userId: order.user }, {
+      $set: { items: [], totalAmount: 0 }
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Payment verified successfully',
+      data: {
+        orderId: order._id,
+        paymentId: razorpay_payment_id
+      }
+    });
+  } catch (error: any) {
+    console.error('Error verifying payment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify payment',
+      error: error.message
+    });
+  }
+};
