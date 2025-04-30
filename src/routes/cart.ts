@@ -4,8 +4,9 @@ import {
   addItemsToCart, 
   updateCartItem, 
   removeCartItem, 
-  clearCart, 
-  checkoutCart 
+  clearCart,  
+  initiateCheckout,
+  verifyPayment
 } from '../controllers/cart.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
@@ -19,6 +20,7 @@ router.post('/add',authenticate, addItemsToCart);
 router.put('/update/:productId', updateCartItem);
 router.delete('/remove/:productId', removeCartItem);
 router.delete('/clear', clearCart);
-router.post('/checkout', checkoutCart);
+router.post('/initiatecheckout',authenticate, initiateCheckout);
+router.post('/verifypayment',authenticate,verifyPayment)
 
 export default router;
