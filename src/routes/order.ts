@@ -15,7 +15,7 @@ import {
 } from '../controllers/orders.controller';
 
 // Import middleware (these would be your auth middlewares)
-import {authenticate }from '../middlewares/auth.middleware';
+import {authenticate, authenticateAdmin }from '../middlewares/auth.middleware';
 
 const router = express.Router();
 
@@ -26,10 +26,10 @@ router.get('/user/orders/:id', authenticate, getUserOrderById);
 router.patch('/user/orders/:id/cancel', authenticate, cancelOrder);
 
 // ===== ADMIN ROUTES =====
-router.get('/admin/orders', authenticate, getAllOrders);
-router.get('/admin/orders/statistics', authenticate, getOrderStatistics);
-router.get('/admin/orders/:id', authenticate, getOrderById);
-router.patch('/admin/orders/:id/status', authenticate, updateOrderStatus);
-router.delete('/admin/orders/:id', authenticate,deleteOrder);
+router.get('/admin/orders', authenticateAdmin, getAllOrders);
+router.get('/admin/orders/statistics', authenticateAdmin, getOrderStatistics);
+router.get('/admin/orders/:id', authenticateAdmin, getOrderById);
+router.patch('/admin/orders/:id/status', authenticateAdmin, updateOrderStatus);
+router.delete('/admin/orders/:id', authenticateAdmin,deleteOrder);
 
 export default router;

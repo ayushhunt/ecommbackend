@@ -15,7 +15,7 @@ import {
 } from '../controllers/review.controller';
 
 // Import middleware
-import { authenticate } from '../middlewares/auth.middleware';
+import { authenticate, authenticateAdmin } from '../middlewares/auth.middleware';
 
 // Import admin authorization middleware (you'll need to implement this)
 
@@ -32,7 +32,7 @@ router.delete('/reviews/:id', authenticate, deleteReview);
 router.get('/products/:productId/reviews', getProductReviews);
 
 // ===== ADMIN ROUTES =====
-router.get('/admin/reviews', authenticate,  getAllReviews);
-router.delete('/admin/reviews/:id', authenticate,  adminDeleteReview);
+router.get('/admin/reviews', authenticateAdmin,  getAllReviews);
+router.delete('/admin/reviews/:id', authenticateAdmin,  adminDeleteReview);
 
 export default router;
