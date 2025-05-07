@@ -9,7 +9,7 @@ interface IReview extends Document {
 }
 
 const reviewSchema = new Schema<IReview>({
-  user: { type: String, ref: 'User', required: true },
+  user: { type: String, required: true},
   product: { type: String, ref: 'Product', required: true },
   rating: { type: Number, required: true, min: 1, max: 5 },
   comment: { type: String, required: true },

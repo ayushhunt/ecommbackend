@@ -23,7 +23,8 @@ const getTokensFromRequest = (req: Request): { accessToken: string | null, refre
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { accessToken, refreshToken } = getTokensFromRequest(req);
-    
+    console.log('Access Token:', accessToken);
+    console.log('Refresh Token:', refreshToken);
     if (accessToken) {
       try {
         const decoded = jwt.verify(accessToken, JWT_CONFIG.accessTokenSecret) as { userId: string };
@@ -67,7 +68,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         const newAccessToken = jwt.sign(
           { userId: decoded.userId },
           JWT_CONFIG.accessTokenSecret,
-          { expiresIn: '1m' }
+          { expiresIn: '15m' }
         );
 
         // Set new access token in cookie
