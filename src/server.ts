@@ -37,7 +37,7 @@ app.use('/v1',  productRouter);
 app.use('/v1',orderRouter)
 app.use('/v1',reviewRouter);
 app.use("/v1",cartRouter)
-app.use("/v1/wish",wishlistRouter);
+app.use("/v1/wish",authenticate,wishlistRouter);
 app.use("/v1/rec",recommendationRouter);
 app.use("/v1/user",authenticate,profileRouter)
 

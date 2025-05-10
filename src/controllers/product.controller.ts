@@ -6,6 +6,19 @@ export const createProduct = async (req: Request, res: Response)=> {
   try {
     const productData = req.body;
     
+    const UPLOAD_DIRECTORY = 'uploads/products';
+    
+    // For multiple images (when using upload.array in routes)
+    if (req.files && Array.isArray(req.files)) {
+      productData.images = (req.files as Express.Multer.File[]).map(file => {
+        return `/${UPLOAD_DIRECTORY}/${file.filename}`;
+      });
+    } 
+    // For single image (when using upload.single in routes)
+    else if (req.file) {
+      productData.images = [`/${UPLOAD_DIRECTORY}/${req.file.filename}`];
+    }
+
     const product = new Product(productData);
     const savedProduct = await product.save();
     

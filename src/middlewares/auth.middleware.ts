@@ -23,7 +23,8 @@ const getTokensFromRequest = (req: Request): { accessToken: string | null, refre
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { accessToken, refreshToken } = getTokensFromRequest(req);
-    
+    console.log('Access Token:', accessToken);
+    console.log('Refresh Token:', refreshToken);
     if (accessToken) {
       try {
         const decoded = jwt.verify(accessToken, JWT_CONFIG.accessTokenSecret) as { userId: string };
@@ -67,7 +68,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         const newAccessToken = jwt.sign(
           { userId: decoded.userId },
           JWT_CONFIG.accessTokenSecret,
-          { expiresIn: '1m' }
+          { expiresIn: '15m' }
         );
 
         // Set new access token in cookie
@@ -98,3 +99,41 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+export const authenticateAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // First authenticate the user
+    authenticate(req, res, async (err?: any) => {
+      // If authentication failed, the error would have been handled by the authenticate middleware
+      if (err) return;
+      
+      // If we get here, user is authenticated and req.user contains the user id
+      if (!req.user || !req.user.id) {
+        res.status(401).json({ message: 'Authentication required' });
+        return;
+      }
+      
+      // Fetch user with role information
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { id: true, role: true }
+      });
+      
+      if (!user) {
+        res.status(401).json({ message: 'User not found' });
+        return;
+      }
+      
+      // Check if user has admin role
+      if (user.role !== 'ADMIN') {
+        res.status(403).json({ message: 'Insufficient permissions' });
+        return;
+      }
+      
+      // User is authenticated and has admin role
+      next();
+    });
+  } catch (error) {
+    console.error('Admin middleware error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};

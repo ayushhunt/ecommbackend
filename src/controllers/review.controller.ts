@@ -25,6 +25,7 @@ export const createReview = async (req: Request, res: Response)=> {
         success: false,
         message: 'You have already reviewed this product'
       });
+      return;
     }
 
     // Create new review
@@ -369,7 +370,7 @@ export const adminDeleteReview = async (req: Request, res: Response) => {
 // Update product rating based on reviews
 const updateProductRating = async (productId: string) => {
   const stats = await Review.aggregate([
-    { $match: { product: new mongoose.Types.ObjectId(productId) } },
+    { $match: { product: productId } },
     { $group: {
       _id: null,
       avgRating: { $avg: '$rating' },

@@ -83,51 +83,44 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-
     if (!isMatch) {
       res.status(401).json({ message: 'Email or password is invalid' });
       return;
     }
 
-    // Create JWT tokens
+    // Clear existing refresh tokens for the user (optional for strict SSO)
+    await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+
+    // Create new tokens
     const accessToken = jwt.sign(
       { userId: user.id },
       JWT_CONFIG.accessTokenSecret,
-      { expiresIn: '1m' }
+      { expiresIn: '15m' }
     );
-    const existingToken = await prisma.refreshToken.findFirst({
-      where: {
+
+    const refreshToken = jwt.sign(
+      { userId: user.id },
+      JWT_CONFIG.refreshTokenSecret,
+      { expiresIn: '7d' }
+    );
+
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
         userId: user.id,
-        expiresAt: {
-          gt: new Date()
-        }
+        expiresAt
       }
     });
-    
-    let refreshToken: string;
-    if (existingToken) {
-      refreshToken = existingToken.token;
-    } else {
-      refreshToken = jwt.sign({ userId: user.id }, JWT_CONFIG.refreshTokenSecret, { expiresIn: '7d' });
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    
-      await prisma.refreshToken.create({
-        data: {
-          token: refreshToken,
-          userId: user.id,
-          expiresAt
-        }
-      });
-    }
 
-    // Set HttpOnly refresh token cookie
+    // Set tokens as cookies
     res.setHeader('Set-Cookie', [
       serialize('accessToken', accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
         path: '/',
-        maxAge: 60,
+        maxAge: 15 * 60, // 15 minutes
       }),
       serialize('refreshToken', refreshToken, {
         httpOnly: true,
@@ -135,9 +128,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         sameSite: 'strict',
         path: '/',
         maxAge: 7 * 24 * 60 * 60, // 7 days
-      }),
-    ]);    
-    // Send access token and user info
+      })
+    ]);
+
     res.status(200).json({
       id: user.id,
       name: user.name,
@@ -315,7 +308,7 @@ export const googleCallback= async (req: Request, res: Response) => {
     const accessToken = jwt.sign(
       { userId: user.id },
       JWT_CONFIG.accessTokenSecret,
-      { expiresIn: '1m' }
+      { expiresIn: '15m' }
     );  // Generate your access and refresh tokens
     const existingToken = await prisma.refreshToken.findFirst({
       where: {
@@ -350,7 +343,13 @@ export const googleCallback= async (req: Request, res: Response) => {
       path: '/auth/refresh-token', // your refresh endpoint
       maxAge: 7 * 24 * 60 * 60, // in seconds
     }));
-
+    res.setHeader('Set-Cookie', serialize('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/auth/refresh-token', // your refresh endpoint
+      maxAge: 15 * 60, // in seconds
+    }));
     // --- Response ---
     // Send your application's tokens back to the frontend
     // You might redirect to a frontend page with tokens in query params or body,
