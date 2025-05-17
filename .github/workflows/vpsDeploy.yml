@@ -23,6 +23,15 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H 69.62.85.32 >> ~/.ssh/known_hosts
 
-      - name: Copy files to VPS
+      - name: Copy code to VPS
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: 69.62.85.32
+          username: root
+          key: ${{ secrets.SSH_KEY }}
+          source: "."
+          target: "/root/app"
+      
+      - name: Verify files
         run: |
-          ssh root@69.62.85.32 "ls -la /root"
+            ssh -i ${{ secrets.SSH_KEY }} root@69.62.85.32 "ls -la /root/app"
