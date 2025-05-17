@@ -17,6 +17,11 @@ jobs:
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
+      
+      - name: Add VPS to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 69.62.85.32 >> ~/.ssh/known_hosts
 
       - name: Copy files to VPS
         run: |
