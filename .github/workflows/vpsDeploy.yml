@@ -20,5 +20,4 @@ jobs:
 
       - name: Copy files to VPS
         run: |
-          ssh root@69.62.85.32 
-          ls
+          ssh root@69.62.85.32 "ls -la /root"
