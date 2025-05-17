@@ -16,8 +16,8 @@ jobs:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.5.3
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
       - name: Copy files to VPS
         run: |
           ssh root@69.62.85.32 
