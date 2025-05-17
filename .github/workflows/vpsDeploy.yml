@@ -1,17 +1,19 @@
 # .github/workflows/hello-world.yml
 
-name: Hello World Workflow
+name: VPS Deploy Workflow
 
 on:
     workflow_dispatch:
       
 
 jobs:
-  hello_world_job:
+  deploytovps:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Print Hello World
-        run: echo "Hello, World!"
+      - name: Copy files to VPS
+        run: |
+          ssh root@69.62.85.32 
+          ls
