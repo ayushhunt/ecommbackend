@@ -32,6 +32,13 @@ jobs:
           source: "."
           target: "/root/app"
       
-      - name: Verify files
-        run: |
-            ssh -i ${{ secrets.SSH_KEY }} root@69.62.85.32 "ls -la /root/app"
+      - name: Rebuild and start containers on VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 69.62.85.32
+          username: root
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /root/app
+            docker compose down || true
+            docker compose up --build -d
