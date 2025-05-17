@@ -23,12 +23,26 @@ const app = express();
 
 // Middleware
 app.use(express.json()); 
+const allowedOrigins = [
+  "http://localhost:3003",       // local dev
+  "http://69.62.85.32:3003",     // public IP
+  "https://relot.in",      // optional, if domain is used
+];
+
 app.use(cors({
-    origin: "http://localhost:3003",
-    credentials: true,
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
-})); 
+}));
+
 app.use(morgan('dev')); 
 
 // Routes
