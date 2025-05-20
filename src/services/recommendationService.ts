@@ -1,13 +1,9 @@
 // src/services/recommendationService.ts
 
-
 import {Product} from '../models/product';
 import {Order} from '../models/order';
 import Wishlist from '../models/wishlist';
 import {Cart} from '../models/cart';
-
-
-
 
 interface RecommendationOptions {
   userId?: string;
@@ -79,6 +75,11 @@ export class RecommendationService {
         recommendations.push(...extraRecommendations);
       }
       
+      // Return general recommendations if we have no recommendations
+      if (recommendations.length === 0) {
+        return this.getGeneralRecommendations({ limit });
+      }
+      
       return recommendations;
     } catch (error) {
       console.error('Error getting user-based recommendations:', error);
@@ -122,6 +123,11 @@ export class RecommendationService {
         similarProducts.push(...topRatedProducts);
       }
       
+      // Return general recommendations if we have no similar products
+      if (similarProducts.length === 0) {
+        return this.getGeneralRecommendations({ limit });
+      }
+      
       return similarProducts;
     } catch (error) {
       console.error('Error getting similar products:', error);
@@ -136,12 +142,19 @@ export class RecommendationService {
     const limit = options.limit || 10;
     
     try {
-      return await Product.find({
+      const categoryRecommendations = await Product.find({
         category,
         stock: { $gt: 0 }
       })
         .sort({ averageRating: -1 })
         .limit(limit);
+      
+      // Return general recommendations if we have no category recommendations
+      if (categoryRecommendations.length === 0) {
+        return this.getGeneralRecommendations({ limit });
+      }
+      
+      return categoryRecommendations;
     } catch (error) {
       console.error('Error getting category recommendations:', error);
       return this.getGeneralRecommendations({ limit });
@@ -218,6 +231,12 @@ export class RecommendationService {
         _id: { $in: productIds },
         stock: { $gt: 0 }
       });
+      console.log('Best Sellers:', bestSellers);
+      
+      // Return general recommendations if we have no best sellers
+      if (bestSellers.length === 0) {
+        return this.getGeneralRecommendations({ limit });
+      }
       
       // Sort results according to the bestseller ranking
       return bestSellers.sort((a:any, b:any) => {
@@ -262,6 +281,11 @@ export class RecommendationService {
         _id: { $in: productIds },
         stock: { $gt: 0 }
       });
+      
+      // Return general recommendations if we have no trending products
+      if (trendingProducts.length === 0) {
+        return this.getGeneralRecommendations({ limit });
+      }
       
       // Sort results according to the trending ranking
       return trendingProducts.sort((a:any, b:any) => {
