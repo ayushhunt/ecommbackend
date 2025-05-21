@@ -13,7 +13,7 @@ import fs from 'fs';
 
 const router = express.Router();
 
-const FRONTEND_PUBLIC_PATH = '/Users/ayushsingh/Desktop/Working 101/relotfrontend/public';
+const FRONTEND_PUBLIC_PATH = process.env.FRONTEND_PUBLIC_PATH || path.join(__dirname, '../../../relotfrontend/');
 const UPLOAD_DIRECTORY = 'uploads/products';
 const FULL_UPLOAD_PATH = path.join(FRONTEND_PUBLIC_PATH, UPLOAD_DIRECTORY);
 
