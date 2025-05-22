@@ -14,7 +14,7 @@ services:
       - mongosetup
     command: >
       sh -c "
-        sleep 10 &&
+        sleep 30 &&
         npx prisma generate &&
         npx prisma migrate deploy &&
         node dist/server.js
@@ -78,7 +78,7 @@ services:
       - mongo3
     entrypoint: >
       bash -c "
-        sleep 10 &&
+        sleep 30 &&
         mongosh --host mongo1:27017 -u root -p example --authenticationDatabase admin --eval '
           rs.initiate({
             _id: \"rs0\",
