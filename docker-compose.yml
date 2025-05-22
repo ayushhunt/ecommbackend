@@ -61,12 +61,11 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: >
-        bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
+      test: ["CMD-SHELL", "mongosh --quiet -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"]
       interval: 10s
       timeout: 20s
       retries: 15
-      start_period: 30s
+      start_period: 60s
 
   mongo-init:
     image: mongo:6
