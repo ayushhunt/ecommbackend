@@ -8,20 +8,11 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - ./.env
+      - .env
     depends_on:
-      - mongodb
       - postgres
-    command: sh -c "npx prisma migrate deploy && node dist/server.js"
-
-  
-
-  mongodb:
-    image: mongo
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
+      - mongodb
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && node dist/server.js"
 
   postgres:
     image: postgres
@@ -34,6 +25,13 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
 
+  mongodb:
+    image: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
 volumes:
-  mongo_data:
   pg_data:
+  mongo_data:

@@ -1,33 +1,41 @@
-# Use Node.js base image
-FROM node:22-alpine
+# ---------- Build Stage ----------
+FROM node:22-alpine AS builder
 
-# Set working directory
-WORKDIR /src
+WORKDIR /app
 
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy only the dependency files first (layer caching)
+# Copy only dependency-related files for caching
 COPY package.json pnpm-lock.yaml* ./
-
-# Install dependencies inside the container
 RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
-# Generate Prisma client
+# Generate Prisma client (needs schema and env for DATABASE_URL)
 RUN npx prisma generate
 
-# (Optional) Run Prisma migrations for production
-# If you use `prisma migrate dev` locally, use `deploy` here
-
-
-# Build TypeScript
+# Build the TypeScript code
 RUN pnpm run build
 
-# Expose backend port
+
+# ---------- Production Stage ----------
+FROM node:22-alpine AS runner
+
+WORKDIR /app
+
+# Install pnpm (if needed in runtime, optional)
+RUN npm install -g pnpm
+
+# Copy only built output and required runtime files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/prisma ./prisma
+
+# Expose the backend port
 EXPOSE 3000
 
-# Start the app
+# Start command (prisma deploy handled in compose)
 CMD ["node", "dist/server.js"]
