@@ -12,18 +12,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      mongosetup:
+      mongo-init:
         condition: service_completed_successfully
     command: >
       sh -c "
-        echo 'Waiting for database initialization...'
-        while ! nc -z postgres 5432; do sleep 2; done
-        until mongosh --host mongo1 --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval 'rs.status().ok' &> /dev/null; do
-          echo 'Waiting for MongoDB replica set...'
-          sleep 5
-        done
-        npx prisma generate
-        npx prisma migrate deploy
+        echo 'Waiting for DBs...';
+        while ! nc -z postgres 5432; do sleep 2; done;
+        until mongosh --host mongo --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval 'rs.status().ok' &> /dev/null; do
+          echo 'Waiting for MongoDB replica set...';
+          sleep 5;
+        done;
+        npx prisma generate;
+        npx prisma migrate deploy;
         node dist/server.js
       "
     networks:
@@ -35,9 +35,9 @@ services:
     env_file:
       - .env
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -48,17 +48,19 @@ services:
     networks:
       - app-network
 
-  mongo1:
+  mongo:
     image: mongo:6
-    container_name: mongo1
+    container_name: mongo
     restart: always
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     command: --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile
     volumes:
-      - mongo1_data:/data/db
+      - mongo_data:/data/db
       - ./mongo-keyfile:/etc/mongo-keyfile:ro
+    networks:
+      - app-network
     healthcheck:
       test: >
         bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
@@ -66,84 +68,21 @@ services:
       timeout: 20s
       retries: 15
       start_period: 30s
-    networks:
-      - app-network
 
-  mongo2:
-    image: mongo:6
-    container_name: mongo2
-    restart: always
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
-    command: --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile
-    volumes:
-      - mongo2_data:/data/db
-      - ./mongo-keyfile:/etc/mongo-keyfile:ro
-    healthcheck:
-      test: >
-        bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
-      interval: 10s
-      timeout: 20s
-      retries: 15
-      start_period: 30s
-    networks:
-      - app-network
-
-  mongo3:
-    image: mongo:6
-    container_name: mongo3
-    restart: always
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
-    command: --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile
-    volumes:
-      - mongo3_data:/data/db
-      - ./mongo-keyfile:/etc/mongo-keyfile:ro
-    healthcheck:
-      test: >
-        bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
-      interval: 10s
-      timeout: 20s
-      retries: 15
-      start_period: 30s
-    networks:
-      - app-network
-
-  mongosetup:
+  mongo-init:
     image: mongo:6
     depends_on:
-      mongo1:
-        condition: service_healthy
-      mongo2:
-        condition: service_healthy
-      mongo3:
+      mongo:
         condition: service_healthy
     entrypoint: >
       bash -c "
-        echo 'Starting replica set initialization...'
-        for i in {1..10}; do
-          if mongosh --host mongo1 -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD \
-            --eval 'rs.status().ok' &> /dev/null; then
-            break
-          fi
-          echo 'Waiting for MongoDB cluster readiness... (attempt $$i/10)'
-          sleep 10
-        done
-
-        mongosh --host mongo1 -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval '
-          if (!rs.status().ok) {
-            rs.initiate({
-              _id: \"rs0\",
-              members: [
-                { _id: 0, host: \"mongo1:27017\" },
-                { _id: 1, host: \"mongo2:27017\" },
-                { _id: 2, host: \"mongo3:27017\" }
-              ]
-            })
-          }'
-        echo 'Replica set initialization complete!'
+        echo 'Initiating single-node replica set...';
+        mongosh --host mongo -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval '
+          rs.initiate({
+            _id: \"rs0\",
+            members: [{ _id: 0, host: \"mongo:27017\" }]
+          })'
+        echo 'Replica set initialized.'
       "
     env_file:
       - .env
@@ -152,9 +91,7 @@ services:
 
 volumes:
   pg_data:
-  mongo1_data:
-  mongo2_data:
-  mongo3_data:
+  mongo_data:
 
 networks:
   app-network:
