@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   backend:
     build:
@@ -9,7 +11,7 @@ services:
       - .env
     depends_on:
       - postgres
-      - mongo1
+      - mongosetup
     command: >
       sh -c "
         sleep 10 &&
@@ -17,6 +19,8 @@ services:
         npx prisma migrate deploy &&
         node dist/server.js
       "
+    networks:
+      - app-network
 
   postgres:
     image: postgres
@@ -27,6 +31,8 @@ services:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    networks:
+      - app-network
 
   mongo1:
     image: mongo:6
@@ -37,6 +43,8 @@ services:
     command: --replSet rs0 --bind_ip_all
     volumes:
       - mongo1_data:/data/db
+    networks:
+      - app-network
 
   mongo2:
     image: mongo:6
@@ -47,6 +55,8 @@ services:
     command: --replSet rs0 --bind_ip_all
     volumes:
       - mongo2_data:/data/db
+    networks:
+      - app-network
 
   mongo3:
     image: mongo:6
@@ -57,6 +67,8 @@ services:
     command: --replSet rs0 --bind_ip_all
     volumes:
       - mongo3_data:/data/db
+    networks:
+      - app-network
 
   mongosetup:
     image: mongo:6
@@ -66,8 +78,8 @@ services:
       - mongo3
     entrypoint: >
       bash -c "
-        sleep 5 &&
-        mongosh --host mongo1:27017 --eval '
+        sleep 10 &&
+        mongosh --host mongo1:27017 -u root -p example --authenticationDatabase admin --eval '
           rs.initiate({
             _id: \"rs0\",
             members: [
@@ -78,9 +90,15 @@ services:
           })
         '
       "
+    networks:
+      - app-network
 
 volumes:
   pg_data:
   mongo1_data:
   mongo2_data:
   mongo3_data:
+
+networks:
+  app-network:
+    driver: bridge
