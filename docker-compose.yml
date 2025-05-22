@@ -16,13 +16,14 @@ services:
         condition: service_completed_successfully
     command: >
       sh -c "
-        echo 'Waiting for MongoDB to be ready...'
-        while ! nc -z mongo1 27017; do
-          sleep 2
+        echo 'Waiting for database initialization...'
+        while ! nc -z postgres 5432; do sleep 2; done
+        until mongosh --host mongo1 --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval 'rs.status().ok' &> /dev/null; do
+          echo 'Waiting for MongoDB replica set...'
+          sleep 5
         done
-        npx prisma generate &&
-        npx prisma migrate deploy &&
-        echo 'Starting backend server...' &&
+        npx prisma generate
+        npx prisma migrate deploy
         node dist/server.js
       "
     networks:
@@ -37,15 +38,13 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    volumes:
+      - pg_data:/var/lib/postgresql/data
     networks:
       - app-network
 
@@ -53,8 +52,6 @@ services:
     image: mongo:6
     container_name: mongo1
     restart: always
-    env_file:
-      - .env
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
@@ -63,10 +60,12 @@ services:
       - mongo1_data:/data/db
       - ./mongo-keyfile:/etc/mongo-keyfile:ro
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh -u root -p example --authenticationDatabase admin --quiet
-      interval: 5s
-      timeout: 10s
-      retries: 10
+      test: >
+        bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
+      interval: 10s
+      timeout: 20s
+      retries: 15
+      start_period: 30s
     networks:
       - app-network
 
@@ -74,8 +73,6 @@ services:
     image: mongo:6
     container_name: mongo2
     restart: always
-    env_file:
-      - .env
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
@@ -84,10 +81,12 @@ services:
       - mongo2_data:/data/db
       - ./mongo-keyfile:/etc/mongo-keyfile:ro
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh -u root -p example --authenticationDatabase admin --quiet
-      interval: 5s
-      timeout: 10s
-      retries: 10
+      test: >
+        bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
+      interval: 10s
+      timeout: 20s
+      retries: 15
+      start_period: 30s
     networks:
       - app-network
 
@@ -95,8 +94,6 @@ services:
     image: mongo:6
     container_name: mongo3
     restart: always
-    env_file:
-      - .env
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
@@ -105,10 +102,12 @@ services:
       - mongo3_data:/data/db
       - ./mongo-keyfile:/etc/mongo-keyfile:ro
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh -u root -p example --authenticationDatabase admin --quiet
-      interval: 5s
-      timeout: 10s
-      retries: 10
+      test: >
+        bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
+      interval: 10s
+      timeout: 20s
+      retries: 15
+      start_period: 30s
     networks:
       - app-network
 
@@ -123,28 +122,31 @@ services:
         condition: service_healthy
     entrypoint: >
       bash -c "
-        echo 'Initializing MongoDB replica set...'
-        until mongosh --host mongo1:27017 -u root -p example --authenticationDatabase admin --eval 'rs.status().ok' >/dev/null 2>&1; do
-          echo 'Waiting for MongoDB nodes to become ready...'
-          sleep 5
+        echo 'Starting replica set initialization...'
+        for i in {1..10}; do
+          if mongosh --host mongo1 -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD \
+            --eval 'rs.status().ok' &> /dev/null; then
+            break
+          fi
+          echo 'Waiting for MongoDB cluster readiness... (attempt $$i/10)'
+          sleep 10
         done
-        
-        if ! mongosh --host mongo1:27017 -u root -p example --authenticationDatabase admin --eval 'rs.status().set' | grep -q 'rs0'; then
-          mongosh --host mongo1:27017 -u root -p example --authenticationDatabase admin --eval '
+
+        mongosh --host mongo1 -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval '
+          if (!rs.status().ok) {
             rs.initiate({
               _id: \"rs0\",
               members: [
-                { _id: 0, host: \"mongo1:27017\", priority: 2 },
-                { _id: 1, host: \"mongo2:27017\", priority: 1 },
-                { _id: 2, host: \"mongo3:27017\", priority: 1, arbiterOnly: true }
+                { _id: 0, host: \"mongo1:27017\" },
+                { _id: 1, host: \"mongo2:27017\" },
+                { _id: 2, host: \"mongo3:27017\" }
               ]
             })
-          '
-          echo 'Replica set initialized successfully!'
-        else
-          echo 'Replica set already initialized'
-        fi
+          }'
+        echo 'Replica set initialization complete!'
       "
+    env_file:
+      - .env
     networks:
       - app-network
 
