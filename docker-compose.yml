@@ -48,26 +48,25 @@ services:
     networks:
       - app-network
 
-    mongo:
-      image: mongo:6
-      container_name: mongo
-      restart: always
-      environment:
-        MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-        MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-      command: --replSet rs0 --bind_ip_all
-      volumes:
-        - mongo_data:/data/db
-      networks:
-        - app-network
-      healthcheck:
-        test: >
-          bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
-        interval: 10s
-        timeout: 20s
-        retries: 15
-        start_period: 30s
-
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    command: --replSet rs0 --bind_ip_all
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: >
+        bash -c "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"
+      interval: 10s
+      timeout: 20s
+      retries: 15
+      start_period: 30s
 
   mongo-init:
     image: mongo:6
