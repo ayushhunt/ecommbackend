@@ -40,9 +40,10 @@ services:
     restart: always
     env_file:
       - .env
-    command: --replSet rs0 --bind_ip_all
+    command: --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile
     volumes:
       - mongo1_data:/data/db
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - app-network
 
@@ -52,9 +53,10 @@ services:
     restart: always
     env_file:
       - .env
-    command: --replSet rs0 --bind_ip_all
+    command: --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile
     volumes:
       - mongo2_data:/data/db
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - app-network
 
@@ -64,9 +66,10 @@ services:
     restart: always
     env_file:
       - .env
-    command: --replSet rs0 --bind_ip_all
+    command: --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile
     volumes:
       - mongo3_data:/data/db
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - app-network
 
@@ -79,7 +82,7 @@ services:
     entrypoint: >
       bash -c "
         sleep 30 &&
-        mongosh --host mongo1:27017 -u root -p example --authenticationDatabase admin --eval '
+        mongosh --host mongo1:27017 -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --eval '
           rs.initiate({
             _id: \"rs0\",
             members: [
@@ -90,6 +93,8 @@ services:
           })
         '
       "
+    env_file:
+      - .env
     networks:
       - app-network
 
