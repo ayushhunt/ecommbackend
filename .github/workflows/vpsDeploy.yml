@@ -1,9 +1,10 @@
-# .github/workflows/hello-world.yml
 
 name: VPS Deploy Workflow
 
 on:
-    workflow_dispatch:
+  push:
+    branches: [prod]
+  workflow_dispatch:
       
 
 jobs:
@@ -21,21 +22,29 @@ jobs:
       - name: Add VPS to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H 69.62.85.32 >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
       - name: Copy code to VPS
         uses: appleboy/scp-action@v0.1.4
         with:
-          host: 69.62.85.32
+          host: ${{ secrets.SERVER_IP }}
           username: root
           key: ${{ secrets.SSH_KEY }}
           source: "."
           target: "/root/app"
-      
+
+      - name: Create .env file on VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: root
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            echo "${{ secrets.ENV_FILE }}" > /root/app/.env
       - name: Rebuild and start containers on VPS
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 69.62.85.32
+          host: ${{ secrets.SERVER_IP }}
           username: root
           key: ${{ secrets.SSH_KEY }}
           script: |
