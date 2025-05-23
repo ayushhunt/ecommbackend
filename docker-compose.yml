@@ -16,7 +16,7 @@ services:
         condition: service_completed_successfully
     command: >
       sh -c "
-        echo 'Waiting for DBs...';
+        echo 'Waiting for databases...';
         while ! nc -z postgres 5432; do sleep 2; done;
         until mongosh --host mongo --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval 'rs.status().ok' &> /dev/null; do
           echo 'Waiting for MongoDB replica set...';
@@ -48,25 +48,6 @@ services:
     networks:
       - app-network
 
-  mongo-keyfile-generator:
-    image: alpine/openssl # Image with openssl, chmod, chown
-    command: >
-      sh -c "
-        if [ ! -f /keyfiles/mongo-keyfile ]; then
-          echo 'Generating MongoDB keyfile...';
-          openssl rand -base64 756 > /keyfiles/mongo-keyfile;
-          chmod 400 /keyfiles/mongo-keyfile;
-          chown 999:999 /keyfiles/mongo-keyfile; # UID:GID for mongodb user in official mongo image
-          echo 'MongoDB keyfile generated, permissions and ownership set.';
-        else
-          echo 'MongoDB keyfile already exists. Ensuring permissions and ownership.';
-          chmod 400 /keyfiles/mongo-keyfile;
-          chown 999:999 /keyfiles/mongo-keyfile;
-        fi
-      "
-    volumes:
-      - mongo_keyfile_volume:/keyfiles
-
   mongo:
     image: mongo:6
     container_name: mongo
@@ -74,10 +55,10 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    command: mongod --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile
+    command: mongod --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile/mongo-keyfile
     volumes:
       - mongo_data:/data/db
-      - mongo_keyfile_volume:/etc/mongo-keyfile:ro # Mount the keyfile read-only
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - app-network
     healthcheck:
@@ -86,26 +67,21 @@ services:
       timeout: 20s
       retries: 15
       start_period: 60s
-    depends_on:
-      mongo-keyfile-generator:
-        condition: service_completed_successfully # Ensures keyfile is ready
 
   mongo-init:
     image: mongo:6
     depends_on:
       mongo:
         condition: service_healthy
-      # mongo-keyfile-generator: # Implicitly handled as 'mongo' depends on it
-      #   condition: service_completed_successfully
     entrypoint: >
       bash -c "
-        echo 'Initiating single-node replica set...';
+        echo 'Initiating MongoDB replica set...';
         mongosh --host mongo -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval '
           rs.initiate({
             _id: \"rs0\",
             members: [{ _id: 0, host: \"mongo:27017\" }]
-          })'
-        echo 'Replica set initialized.'
+          })';
+        echo 'Replica set initialized.';
       "
     env_file:
       - .env
@@ -115,7 +91,6 @@ services:
 volumes:
   pg_data:
   mongo_data:
-  mongo_keyfile_volume: {} # Define the shared volume for the keyfile
 
 networks:
   app-network:
