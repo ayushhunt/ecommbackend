@@ -8,6 +8,7 @@ on:
 jobs:
   deploytovps:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -19,8 +20,9 @@ jobs:
 
       - name: Generate MongoDB keyfile
         run: |
-          openssl rand -base64 756 > mongo-keyfile
-          chmod 400 mongo-keyfile
+          mkdir -p mongo-keyfile
+          openssl rand -base64 756 > mongo-keyfile/mongo-keyfile
+          chmod 400 mongo-keyfile/mongo-keyfile
 
       - name: Add VPS to known_hosts
         run: |
@@ -36,17 +38,6 @@ jobs:
           source: "."
           target: "/root/app"
 
-      - name: Move mongo-keyfile into subfolder on VPS
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: root
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            mkdir -p /root/app/mongo-keyfile
-            mv /root/app/mongo-keyfile /root/app/mongo-keyfile/mongo-keyfile
-            chmod 400 /root/app/mongo-keyfile/mongo-keyfile
-
       - name: Create .env file on VPS
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -55,6 +46,15 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             echo "${{ secrets.ENV_FILE }}" > /root/app/.env
+
+      - name: Set permissions on keyfile on VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: root
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            chmod 400 /root/app/mongo-keyfile/mongo-keyfile
 
       - name: Rebuild and start containers on VPS
         uses: appleboy/ssh-action@v1.0.0
