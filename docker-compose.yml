@@ -18,7 +18,7 @@ services:
       sh -c "
         echo 'Waiting for databases...';
         while ! nc -z postgres 5432; do sleep 2; done;
-        until mongosh --host mongo --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval 'rs.status().ok' &> /dev/null; do
+        until mongosh --host mongo --username $MONGO_INITDB_ROOT_USERNAME --password $MONGO_INITDB_ROOT_PASSWORD --eval 'rs.status().ok' &> /dev/null; do
           echo 'Waiting for MongoDB replica set...';
           sleep 5;
         done;
@@ -55,18 +55,18 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    command: mongod --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile/mongo-keyfile
+    command: mongod --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile/mongo-key
     volumes:
       - mongo_data:/data/db
-      - ./mongo-keyfile:/etc/mongo-keyfile:ro
+      - ./mongo-keyfile/mongo-key:/etc/mongo-keyfile/mongo-key:ro
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"]
-      interval: 10s
-      timeout: 20s
-      retries: 15
-      start_period: 60s
+      test: ["CMD-SHELL", "mongosh --quiet -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
   mongo-init:
     image: mongo:6
@@ -76,7 +76,7 @@ services:
     entrypoint: >
       bash -c "
         echo 'Initiating MongoDB replica set...';
-        mongosh --host mongo -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --eval '
+        mongosh --host mongo -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --eval '
           rs.initiate({
             _id: \"rs0\",
             members: [{ _id: 0, host: \"mongo:27017\" }]

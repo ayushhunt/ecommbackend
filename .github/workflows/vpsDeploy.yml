@@ -54,7 +54,7 @@ jobs:
           username: root
           key: ${{ secrets.SSH_KEY }}
           script: |
-            chmod 400 /root/app/mongo-keyfile/mongo-keyfile
+            chmod 400 /root/app/mongo-keyfile/mongo-key
 
       - name: Rebuild and start containers on VPS
         uses: appleboy/ssh-action@v1.0.0
