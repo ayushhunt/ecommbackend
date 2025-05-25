@@ -75,7 +75,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         res.setHeader('Set-Cookie', serialize('accessToken', newAccessToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           path: '/',
           maxAge: 60,
         }));

@@ -118,14 +118,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       serialize('accessToken', accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
         path: '/',
         maxAge: 15 * 60, // 15 minutes
       }),
       serialize('refreshToken', refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
         path: '/',
         maxAge: 7 * 24 * 60 * 60, // 7 days
       })
@@ -339,15 +339,15 @@ export const googleCallback= async (req: Request, res: Response) => {
     res.setHeader('Set-Cookie', serialize('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/auth/refresh-token', // your refresh endpoint
+      sameSite: 'lax',
+      path: '/', // your refresh endpoint
       maxAge: 7 * 24 * 60 * 60, // in seconds
     }));
     res.setHeader('Set-Cookie', serialize('accessToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/auth/refresh-token', // your refresh endpoint
+      sameSite: 'lax',
+      path: '/', // your refresh endpoint
       maxAge: 15 * 60, // in seconds
     }));
     // --- Response ---
@@ -383,14 +383,14 @@ export const logout = async (req: Request, res: Response) => {
       serialize('accessToken', '', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
         path: '/',
         expires: new Date(0), // Immediately expire the cookie
       }),
       serialize('refreshToken', '', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
         path: '/',
         expires: new Date(0), // Immediately expire the cookie
       }),
