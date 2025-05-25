@@ -52,13 +52,22 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    # Single-line mongod command to avoid YAML quoting issues:
     command: mongod --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile/mongo-keyfile --logpath /dev/stdout --logappend
     volumes:
       - mongo_data:/data/db
       - ./mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - app-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh \"mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@localhost:27017/admin\" --eval 'db.runCommand({ ping: 1 })' &> /dev/null"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   mongo-init:
     image: mongo:6
