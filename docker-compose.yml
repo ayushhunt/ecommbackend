@@ -84,7 +84,6 @@ services:
       bash -c "
         echo '🛠 Initiating MongoDB replica set…';
 
-        # Use a single mongosh connection string so bash does NOT split flags:
         mongosh \"mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/admin\" --eval '
           cfg = {
             _id: \"rs0\",
