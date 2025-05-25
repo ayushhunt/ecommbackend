@@ -14,12 +14,17 @@ import cartRouter from './routes/cart';
 import wishlistRouter from './routes/wishlist'
 import recommendationRouter from './routes/recommendation';
 import profileRouter from './routes/profile';
+import path from 'path';
+
 
 // Load environment variables
 dotenv.config();
 dbConnect();
 
 const app = express();
+
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 
 // Middleware
 app.use(express.json()); 

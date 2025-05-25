@@ -2,39 +2,37 @@ import { Request, Response } from 'express';
 import { Product } from '../models/product';
 
 // Create a new product
-export const createProduct = async (req: Request, res: Response)=> {
+// Change this to your actual IP and port
+const SERVER_IP = process.env.SERVER_IP || 'http://69.62.85.32:3000';
+const UPLOAD_DIRECTORY = 'uploads/products';
+
+export const createProduct = async (req: Request, res: Response) => {
   try {
     const productData = req.body;
-    
-    const UPLOAD_DIRECTORY = 'uploads/products';
-    
-    // For multiple images (when using upload.array in routes)
+
+    // Generate full public URLs for uploaded images
     if (req.files && Array.isArray(req.files)) {
       productData.images = (req.files as Express.Multer.File[]).map(file => {
-        return `/${UPLOAD_DIRECTORY}/${file.filename}`;
+        return `${SERVER_IP}/${UPLOAD_DIRECTORY}/${file.filename}`;
       });
-    } 
-    // For single image (when using upload.single in routes)
-    else if (req.file) {
-      productData.images = [`/${UPLOAD_DIRECTORY}/${req.file.filename}`];
+    } else if (req.file) {
+      productData.images = [`${SERVER_IP}/${UPLOAD_DIRECTORY}/${req.file.filename}`];
     }
 
     const product = new Product(productData);
     const savedProduct = await product.save();
-    
+
     res.status(201).json({
       success: true,
       message: 'Product created successfully',
       data: savedProduct
     });
-    return;
   } catch (error: any) {
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to create product',
-      error: error
+      error
     });
-    return;
   }
 };
 

@@ -1,59 +1,52 @@
 import express from 'express';
-import { 
-  createProduct, 
-  getProducts, 
-  getProductById, 
-  updateProduct, 
-  deleteProduct 
-} from '../controllers/product.controller';
-import { authenticate, authenticateAdmin } from '../middlewares/auth.middleware';
-import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import multer from 'multer';
+import {
+  createProduct,
+  getProducts,
+  getProductById,
+  updateProduct,
+  deleteProduct
+} from '../controllers/product.controller';
+import { authenticateAdmin } from '../middlewares/auth.middleware';
 
 const router = express.Router();
 
-const FRONTEND_PUBLIC_PATH = process.env.FRONTEND_PUBLIC_PATH || path.join(__dirname, '../../../relotfrontend/');
 const UPLOAD_DIRECTORY = 'uploads/products';
-const FULL_UPLOAD_PATH = path.join(FRONTEND_PUBLIC_PATH, UPLOAD_DIRECTORY);
+const FULL_UPLOAD_PATH = path.join(__dirname, '../..', UPLOAD_DIRECTORY);
 
-// Create the directory if it doesn't exist
+// Ensure uploads folder exists
 if (!fs.existsSync(FULL_UPLOAD_PATH)) {
   fs.mkdirSync(FULL_UPLOAD_PATH, { recursive: true });
 }
 
-// Configure storage
+// Multer config
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     cb(null, FULL_UPLOAD_PATH);
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, `product-${uniqueSuffix}${ext}`);
   }
 });
 
-// Create upload middleware
-const upload = multer({ 
+const upload = multer({
   storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
   },
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// Product routes
-router.get('/products',getProducts);
+// Routes
+router.get('/products', getProducts);
 router.get('/products/:id', getProductById);
-
-
-router.post('/products',authenticateAdmin,upload.array('images', 5), createProduct);
-router.put('/products/:id',authenticateAdmin, updateProduct);
-router.delete('/products/:id',authenticateAdmin, deleteProduct);
+router.post('/products', authenticateAdmin, upload.array('images', 5), createProduct);
+router.put('/products/:id', authenticateAdmin, updateProduct);
+router.delete('/products/:id', authenticateAdmin, deleteProduct);
 
 export default router;
