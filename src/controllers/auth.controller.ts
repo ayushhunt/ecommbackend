@@ -117,14 +117,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.setHeader('Set-Cookie', [
       serialize('accessToken', accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
         sameSite: 'lax',
         path: '/',
         maxAge: 15 * 60, // 15 minutes
       }),
       serialize('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
         sameSite: 'lax',
         path: '/',
         maxAge: 7 * 24 * 60 * 60, // 7 days
@@ -338,14 +338,14 @@ export const googleCallback= async (req: Request, res: Response) => {
     // Set HttpOnly refresh token cookie
     res.setHeader('Set-Cookie', serialize('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
       sameSite: 'lax',
       path: '/', // your refresh endpoint
       maxAge: 7 * 24 * 60 * 60, // in seconds
     }));
     res.setHeader('Set-Cookie', serialize('accessToken', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
       sameSite: 'lax',
       path: '/', // your refresh endpoint
       maxAge: 15 * 60, // in seconds
@@ -382,14 +382,14 @@ export const logout = async (req: Request, res: Response) => {
     res.setHeader('Set-Cookie', [
       serialize('accessToken', '', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
         sameSite: 'lax',
         path: '/',
         expires: new Date(0), // Immediately expire the cookie
       }),
       serialize('refreshToken', '', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
         sameSite: 'lax',
         path: '/',
         expires: new Date(0), // Immediately expire the cookie
