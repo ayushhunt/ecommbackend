@@ -1,9 +1,8 @@
-
 name: VPS Deploy Workflow
 
 on:
   push:
-    branches: [prod]
+    branches: [relotbackend]
   workflow_dispatch:
 
 jobs:
@@ -19,18 +18,12 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
-      - name: Generate MongoDB keyfile
-        run: |
-          mkdir -p mongo-keyfile
-          openssl rand -base64 756 > mongo-keyfile/mongo-keyfile
-          chmod 400 mongo-keyfile/mongo-keyfile
-
       - name: Add VPS to known_hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
-      - name: Copy project and keyfile to VPS
+      - name: Copy project to VPS
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.SERVER_IP }}
@@ -48,18 +41,7 @@ jobs:
           script: |
             echo "${{ secrets.ENV_FILE }}" > /root/app/.env
 
-      - name: Set ownership and permissions on keyfile on VPS
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: root
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            # Ensure the file is owned by UID 999 (mongodb) and readable only by owner
-            chown 999:999 /root/app/mongo-keyfile/mongo-keyfile
-            chmod 400 /root/app/mongo-keyfile/mongo-keyfile
-
-      - name: Rebuild and start containers on VPS
+      - name: Deploy application
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_IP }}
@@ -68,5 +50,5 @@ jobs:
           script: |
             cd /root/app
             docker compose down || true
+            docker system prune -f
             docker compose up --build -d
-

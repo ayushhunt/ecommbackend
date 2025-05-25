@@ -7,98 +7,20 @@ import mongoose from 'mongoose';
 // ===== USER ENDPOINTS =====
 
 // Create a new order
-export const createOrder = async (req: Request, res: Response) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const { items, paymentMethod, shippingAddress } = req.body;
-    const userId = req.user.id; // Assuming user ID is available from authentication middleware
-
-    // Validate items and calculate total amount
-    let totalAmount = 0;
-    const orderItems = [];
-
-    for (const item of items) {
-      const product = await Product.findById(item.product).session(session);
-      
-      if (!product) {
-        throw new Error(`Product not found with ID: ${item.product}`);
-      }
-      
-      if (product.stock < item.quantity) {
-        throw new Error(`Insufficient stock for product: ${product.name}`);
-      }
-      
-      // Update product stock
-      await Product.findByIdAndUpdate(
-        item.product,
-        { $inc: { stock: -item.quantity } },
-        { session }
-      );
-      
-      // Add item to order with current price
-      orderItems.push({
-        product: item.product,
-        quantity: item.quantity,
-        price: product.price
-      });
-      
-      totalAmount += product.price * item.quantity;
-    }
-
-    // Create new order
-    const order = new Order({
-      user: userId,
-      items: orderItems,
-      totalAmount,
-      paymentMethod,
-      shippingAddress,
-      paymentStatus: PaymentStatus.PENDING,
-      deliveryStatus: DeliveryStatus.PENDING
-    });
-
-    await order.save({ session });
-    await session.commitTransaction();
-
-    // Populate product details for response
-    const populatedOrder = await Order.findById(order._id).populate({
-      path: 'items.product',
-      select: 'name images'
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Order created successfully',
-      data: populatedOrder
-    });
-    return;
-  } catch (error: any) {
-    await session.abortTransaction();
-    
-    res.status(400).json({
-      success: false,
-      message: error.message || 'Failed to create order',
-      error: error
-    });
-    return;
-  } finally {
-    session.endSession();
-  }
-};
-
 // export const createOrder = async (req: Request, res: Response) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
 //   try {
 //     const { items, paymentMethod, shippingAddress } = req.body;
-//     console.log(req.user.id)
-//     const userId = req.user.id;
+//     const userId = req.user.id; // Assuming user ID is available from authentication middleware
 
+//     // Validate items and calculate total amount
 //     let totalAmount = 0;
 //     const orderItems = [];
 
-//     // Use Promise.all for concurrent product checks
-//     await Promise.all(items.map(async (item:any) => {
-//       const product = await Product.findById(item.product);
+//     for (const item of items) {
+//       const product = await Product.findById(item.product).session(session);
       
 //       if (!product) {
 //         throw new Error(`Product not found with ID: ${item.product}`);
@@ -107,28 +29,22 @@ export const createOrder = async (req: Request, res: Response) => {
 //       if (product.stock < item.quantity) {
 //         throw new Error(`Insufficient stock for product: ${product.name}`);
 //       }
-//     }));
-
-//     // Perform stock updates and order item preparation
-//     for (const item of items) {
-//       // Atomic update to ensure stock reduction
-//       const updatedProduct = await Product.findByIdAndUpdate(
-//         item.product, 
-//         { $inc: { stock: -item.quantity } }, 
-//         { new: true }
+      
+//       // Update product stock
+//       await Product.findByIdAndUpdate(
+//         item.product,
+//         { $inc: { stock: -item.quantity } },
+//         { session }
 //       );
-
-//       if (!updatedProduct) {
-//         throw new Error(`Failed to update stock for product: ${item.product}`);
-//       }
-
+      
+//       // Add item to order with current price
 //       orderItems.push({
 //         product: item.product,
 //         quantity: item.quantity,
-//         price: updatedProduct.price
+//         price: product.price
 //       });
-
-//       totalAmount += updatedProduct.price * item.quantity;
+      
+//       totalAmount += product.price * item.quantity;
 //     }
 
 //     // Create new order
@@ -142,7 +58,8 @@ export const createOrder = async (req: Request, res: Response) => {
 //       deliveryStatus: DeliveryStatus.PENDING
 //     });
 
-//     await order.save();
+//     await order.save({ session });
+//     await session.commitTransaction();
 
 //     // Populate product details for response
 //     const populatedOrder = await Order.findById(order._id).populate({
@@ -156,27 +73,259 @@ export const createOrder = async (req: Request, res: Response) => {
 //       data: populatedOrder
 //     });
 //     return;
-
 //   } catch (error: any) {
-//     // Rollback stock updates (optional, but provides additional safety)
-//     if (error.message.includes('Insufficient stock') || error.message.includes('Product not found')) {
-//       for (const item of req.body.items) {
-//         await Product.findByIdAndUpdate(
-//           item.product, 
-//           { $inc: { stock: item.quantity } }
-//         );
-//       }
-//     }
-
+//     await session.abortTransaction();
+    
 //     res.status(400).json({
 //       success: false,
 //       message: error.message || 'Failed to create order',
 //       error: error
 //     });
 //     return;
+//   } finally {
+//     session.endSession();
 //   }
 // };
 
+
+interface OrderItem {
+  product: string;
+  quantity: number;
+}
+
+interface CreateOrderRequest {
+  items: OrderItem[];
+  paymentMethod: string;
+  shippingAddress: any;
+}
+
+export const createOrder = async (req: Request, res: Response) => {
+  const stockUpdates: Array<{ productId: string; quantity: number }> = [];
+  
+  try {
+    const { items, paymentMethod, shippingAddress }: CreateOrderRequest = req.body;
+    const userId = req.user.id;
+
+    // Input validation
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Items array is required and cannot be empty'
+      });
+      return;
+    }
+
+    if (!paymentMethod || !shippingAddress) {
+      res.status(400).json({
+        success: false,
+        message: 'Payment method and shipping address are required'
+      });
+      return;
+    }
+
+    // Validate item structure
+    for (const item of items) {
+      if (!item.product || !mongoose.Types.ObjectId.isValid(item.product)) {
+        res.status(400).json({
+          success: false,
+          message: `Invalid product ID: ${item.product}`
+        });
+        return;
+      }
+
+      if (!item.quantity || item.quantity <= 0 || !Number.isInteger(item.quantity)) {
+        res.status(400).json({
+          success: false,
+          message: `Invalid quantity for product ${item.product}. Must be a positive integer`
+        });
+        return;
+      }
+    }
+
+    // Check for duplicate products in order
+    const productIds = items.map(item => item.product);
+    const uniqueProductIds = new Set(productIds);
+    if (productIds.length !== uniqueProductIds.size) {
+      res.status(400).json({
+        success: false,
+        message: 'Duplicate products in order. Please combine quantities for the same product'
+      });
+      return;
+    }
+
+    let totalAmount = 0;
+    const orderItems = [];
+
+    // Process each item with atomic stock updates
+    for (const item of items) {
+      // Atomic stock check and update
+      const updatedProduct = await Product.findOneAndUpdate(
+        {
+          _id: item.product,
+          stock: { $gte: item.quantity }, // Ensure sufficient stock
+          isActive: { $ne: false } // Ensure product is active
+        },
+        { 
+          $inc: { stock: -item.quantity }
+        },
+        { 
+          new: true,
+          runValidators: true
+        }
+      );
+
+      if (!updatedProduct) {
+        // Check specific failure reason
+        const product = await Product.findById(item.product);
+        
+        if (!product) {
+          throw new Error(`Product not found: ${item.product}`);
+        }
+        
+        
+        
+        if (product.stock < item.quantity) {
+          throw new Error(`Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`);
+        }
+        
+        throw new Error(`Failed to reserve stock for product: ${product.name}`);
+      }
+
+      // Track successful stock update for potential rollback
+      stockUpdates.push({
+        productId: item.product,
+        quantity: item.quantity
+      });
+
+      orderItems.push({
+        product: item.product,
+        quantity: item.quantity,
+        price: updatedProduct.price
+      });
+
+      totalAmount += updatedProduct.price * item.quantity;
+    }
+
+    // Validate total amount
+    if (totalAmount <= 0) {
+      throw new Error('Invalid order total amount');
+    }
+
+    // Create order with validation
+    const orderData = {
+      user: userId,
+      items: orderItems,
+      totalAmount,
+      paymentMethod,
+      shippingAddress,
+      paymentStatus: PaymentStatus.PENDING,
+      deliveryStatus: DeliveryStatus.PENDING,
+      createdAt: new Date()
+    };
+
+    const order = new Order(orderData);
+    
+    // Validate order before saving
+    const validationError = order.validateSync();
+    if (validationError) {
+      throw new Error(`Order validation failed: ${validationError.message}`);
+    }
+
+    await order.save();
+
+    // Populate product details for response
+    const populatedOrder = await Order.findById(order._id)
+      .populate({
+        path: 'items.product',
+        select: 'name images price'
+      })
+      .populate({
+        path: 'user',
+        select: 'name email'
+      });
+
+    if (!populatedOrder) {
+      throw new Error('Failed to retrieve created order');
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Order created successfully',
+      data: populatedOrder
+    });
+    return;
+
+  } catch (error: any) {
+    console.error('Error creating order:', {
+      userId: req.user?.id,
+      items: req.body?.items,
+      error: error.message,
+      stack: error.stack
+    });
+
+    // Rollback stock updates on failure
+    if (stockUpdates.length > 0) {
+      console.log('Rolling back stock updates for failed order...');
+      
+      const rollbackResults = await Promise.allSettled(
+        stockUpdates.map(async ({ productId, quantity }) => {
+          try {
+            const result = await Product.findByIdAndUpdate(
+              productId,
+              { $inc: { stock: quantity } },
+              { new: true }
+            );
+            
+            if (!result) {
+              console.error(`Failed to rollback stock for product: ${productId}`);
+            }
+            
+            return { productId, success: !!result };
+          } catch (rollbackError) {
+            console.error(`Rollback error for product ${productId}:`, rollbackError);
+            return { productId, success: false, error: rollbackError };
+          }
+        })
+      );
+
+      const failedRollbacks = rollbackResults
+        .filter(result => result.status === 'rejected' || 
+                (result.status === 'fulfilled' && !result.value.success))
+        .length;
+
+      if (failedRollbacks > 0) {
+        console.error(`Critical: ${failedRollbacks} stock rollbacks failed. Manual intervention required.`);
+        // In production, send alert to admin/monitoring system
+      }
+    }
+
+    // Determine appropriate error status and message
+    let statusCode = 500;
+    let message = 'Failed to create order due to server error';
+
+    if (error.message.includes('not found') || 
+        error.message.includes('no longer available')) {
+      statusCode = 404;
+      message = error.message;
+    } else if (error.message.includes('Insufficient stock') || 
+               error.message.includes('Invalid') ||
+               error.message.includes('validation failed') ||
+               error.message.includes('Duplicate products')) {
+      statusCode = 400;
+      message = error.message;
+    }
+
+    res.status(statusCode).json({
+      success: false,
+      message,
+      ...(process.env.NODE_ENV === 'development' && { 
+        error: error.message,
+        stockUpdatesAttempted: stockUpdates.length 
+      })
+    });
+    return;
+  }
+};
 
 
 // Get all orders for current user
@@ -266,77 +415,16 @@ export const getUserOrderById = async (req: Request, res: Response) => {
 };
 
 // Cancel an order (user)
-export const cancelOrder = async (req: Request, res: Response) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
-  try {
-    const { id } = req.params;
-    const userId = req.user.id; // From auth middleware
-    
-    const order = await Order.findOne({ _id: id, user: userId }).session(session);
-    
-    if (!order) {
-      res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
-      return;
-    }
-    
-    // Only allow cancellation if order is still pending
-    if (order.deliveryStatus !== DeliveryStatus.PENDING) {
-      res.status(400).json({
-        success: false,
-        message: `Cannot cancel order in '${order.deliveryStatus}' status`
-      });
-      return;
-    }
-    
-    // Update order status
-    order.deliveryStatus = DeliveryStatus.CANCELLED;
-    await order.save({ session });
-    
-    // Restore product stock
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(
-        item.product,
-        { $inc: { stock: item.quantity } },
-        { session }
-      );
-    }
-    
-    await session.commitTransaction();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Order cancelled successfully',
-      data: order
-    });
-    return;
-  } catch (error: any) {
-    await session.abortTransaction();
-    
-    res.status(400).json({
-      success: false,
-      message: error.message || 'Failed to cancel order',
-      error: error
-    });
-    return;
-  } finally {
-    session.endSession();
-  }
-};
-
-
 // export const cancelOrder = async (req: Request, res: Response) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+  
 //   try {
 //     const { id } = req.params;
 //     const userId = req.user.id; // From auth middleware
-
-//     // Find the order
-//     const order = await Order.findOne({ _id: id, user: userId });
-
+    
+//     const order = await Order.findOne({ _id: id, user: userId }).session(session);
+    
 //     if (!order) {
 //       res.status(404).json({
 //         success: false,
@@ -344,7 +432,7 @@ export const cancelOrder = async (req: Request, res: Response) => {
 //       });
 //       return;
 //     }
-
+    
 //     // Only allow cancellation if order is still pending
 //     if (order.deliveryStatus !== DeliveryStatus.PENDING) {
 //       res.status(400).json({
@@ -353,38 +441,166 @@ export const cancelOrder = async (req: Request, res: Response) => {
 //       });
 //       return;
 //     }
-
+    
 //     // Update order status
 //     order.deliveryStatus = DeliveryStatus.CANCELLED;
-//     await order.save();
-
-//     // Use Promise.all to restore product stock concurrently
-//     const stockRestorePromises = order.items.map(item => 
-//       Product.findByIdAndUpdate(
-//         item.product, 
-//         { $inc: { stock: item.quantity } }
-//       )
-//     );
-
-//     // Wait for all stock restoration operations to complete
-//     await Promise.all(stockRestorePromises);
-
+//     await order.save({ session });
+    
+//     // Restore product stock
+//     for (const item of order.items) {
+//       await Product.findByIdAndUpdate(
+//         item.product,
+//         { $inc: { stock: item.quantity } },
+//         { session }
+//       );
+//     }
+    
+//     await session.commitTransaction();
+    
 //     res.status(200).json({
 //       success: true,
 //       message: 'Order cancelled successfully',
 //       data: order
 //     });
 //     return;
-
 //   } catch (error: any) {
+//     await session.abortTransaction();
+    
 //     res.status(400).json({
 //       success: false,
 //       message: error.message || 'Failed to cancel order',
 //       error: error
 //     });
 //     return;
+//   } finally {
+//     session.endSession();
 //   }
 // };
+
+
+export const cancelOrder = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid order ID format'
+      });
+      return;
+    }
+
+    // Find and update order atomically with conditions
+    const order = await Order.findOneAndUpdate(
+      { 
+        _id: id, 
+        user: userId,
+        deliveryStatus: DeliveryStatus.PENDING // Only update if still pending
+      },
+      { 
+        deliveryStatus: DeliveryStatus.CANCELLED,
+        cancelledAt: new Date()
+      },
+      { 
+        new: true, // Return updated document
+        runValidators: true
+      }
+    );
+
+    if (!order) {
+      // Check if order exists but in wrong state
+      const existingOrder = await Order.findOne({ _id: id, user: userId });
+      
+      if (!existingOrder) {
+        res.status(404).json({
+          success: false,
+          message: 'Order not found'
+        });
+        return;
+      }
+
+      res.status(400).json({
+        success: false,
+        message: `Cannot cancel order in '${existingOrder.deliveryStatus}' status`
+      });
+      return;
+    }
+
+    // Restore product stock with error tracking
+    const stockUpdateResults = await Promise.allSettled(
+      order.items.map(async (item) => {
+        const result = await Product.findOneAndUpdate(
+          { 
+            _id: item.product,
+            stock: { $gte: 0 } // Ensure stock doesn't go negative
+          },
+          { 
+            $inc: { stock: item.quantity }
+          },
+          { 
+            new: true,
+            runValidators: true
+          }
+        );
+        
+        if (!result) {
+          throw new Error(`Failed to update stock for product ${item.product}`);
+        }
+        
+        return {
+          productId: item.product,
+          quantityRestored: item.quantity,
+          newStock: result.stock
+        };
+      })
+    );
+
+    // Check for any failed stock updates
+    const failedUpdates = stockUpdateResults.filter(result => result.status === 'rejected');
+    const successfulUpdates = stockUpdateResults
+      .filter(result => result.status === 'fulfilled')
+      .map(result => (result as PromiseFulfilledResult<any>).value);
+
+    // Log warnings for failed stock updates but don't fail the cancellation
+    if (failedUpdates.length > 0) {
+      console.warn('Some stock updates failed during order cancellation:', {
+        orderId: id,
+        failedUpdates: failedUpdates.map(f => (f as PromiseRejectedResult).reason.message)
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Order cancelled successfully',
+      data: {
+        order,
+        stockUpdates: {
+          successful: successfulUpdates.length,
+          failed: failedUpdates.length,
+          details: successfulUpdates
+        }
+      }
+    });
+    return;
+
+  } catch (error: any) {
+    console.error('Error cancelling order:', {
+      orderId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cancel order due to server error',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
+    return;
+  }
+};
 // ===== ADMIN ENDPOINTS =====
 
 

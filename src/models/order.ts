@@ -48,7 +48,7 @@ interface IOrder extends Document {
 }
 
 const orderSchema = new Schema<IOrder>({
-  user: { type: String, ref: 'User', required: true },
+  user: { type: String,  required: true,unique: true },
   items: [{
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     quantity: { type: Number, required: true, min: 1 },
