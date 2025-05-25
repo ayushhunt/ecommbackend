@@ -52,28 +52,13 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    command: >
-      mongod \
-        --replSet rs0 \
-        --bind_ip_all \
-        --keyFile /etc/mongo-keyfile/mongo-keyfile \
-        --logpath /dev/stdout \
-        --logappend
+    # Single-line mongod command to avoid YAML quoting issues:
+    command: mongod --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile/mongo-keyfile --logpath /dev/stdout --logappend
     volumes:
       - mongo_data:/data/db
       - ./mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - app-network
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "mongosh \"mongodb://$${MONGO_INITDB_ROOT_USERNAME}:$${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/admin\" --eval 'db.runCommand({ ping: 1 })' &> /dev/null"
-        ]
-      interval: 10s
-      timeout: 20s
-      retries: 15
-      start_period: 60s
 
   mongo-init:
     image: mongo:6
@@ -83,31 +68,20 @@ services:
     entrypoint: >
       bash -c "
         echo '🛠 Initiating MongoDB replica set…';
-
         mongosh \"mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/admin\" --eval '
-          cfg = {
-            _id: \"rs0\",
-            members: [{ _id: 0, host: \"mongo:27017\" }]
-          };
-          printjson(cfg);
-          rs.initiate(cfg);
+          rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"mongo:27017\" }] });
         ';
-
         echo '⏳ Waiting for PRIMARY…';
         while true; do
-          STATE=$(mongosh \
-            \"mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/admin\" \
-            --quiet --eval 'print(rs.status().myState)' || echo \"NR\")
-
+          STATE=$(mongosh \"mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/admin\" --quiet --eval 'print(rs.status().myState)' || echo \"NR\");
           if [ \"${STATE}\" = \"1\" ]; then
-            echo \"✅ PRIMARY elected (${STATE}).\";
+            echo \"✅ PRIMARY elected (\${STATE}).\";
             break;
           else
-            echo \"… still in state ${STATE}, retrying in 2s…\";
+            echo \"… still in state \${STATE}, retrying in 2s…\";
             sleep 2;
           fi
-        done
-
+        done;
         echo '🛠 Replica set is now PRIMARY. Initialization done.';
       "
     env_file:
