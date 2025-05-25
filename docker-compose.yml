@@ -18,10 +18,7 @@ services:
       sh -c "
         echo 'Waiting for databases...';
         while ! nc -z postgres 5432; do sleep 2; done;
-        until mongosh --host mongo --username $MONGO_INITDB_ROOT_USERNAME --password $MONGO_INITDB_ROOT_PASSWORD --eval 'rs.status().ok' &> /dev/null; do
-          echo 'Waiting for MongoDB replica set...';
-          sleep 5;
-        done;
+        echo 'MongoDB replica set is ready—starting migrations…';
         npx prisma generate;
         npx prisma migrate deploy;
         node dist/server.js
@@ -55,18 +52,21 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    command: mongod --replSet rs0 --bind_ip_all --keyFile /etc/mongo-keyfile/mongo-key
+    command: >
+      mongod --replSet rs0 \
+             --bind_ip_all \
+             --keyFile /etc/mongo-keyfile/mongo-keyfile
     volumes:
       - mongo_data:/data/db
-      - ./mongo-keyfile/mongo-key:/etc/mongo-keyfile/mongo-key:ro
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --eval 'db.runCommand(\"ping\").ok'"]
-      interval: 5s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
+      test: ["CMD-SHELL", "mongosh --quiet -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --eval 'db.runCommand(\"ping\").ok'"]
+      interval: 10s
+      timeout: 20s
+      retries: 15
+      start_period: 60s
 
   mongo-init:
     image: mongo:6
@@ -75,13 +75,36 @@ services:
         condition: service_healthy
     entrypoint: >
       bash -c "
-        echo 'Initiating MongoDB replica set...';
-        mongosh --host mongo -u $MONGO_INITDB_ROOT_USERNAME -p $MONGO_INITDB_ROOT_PASSWORD --eval '
-          rs.initiate({
-            _id: \"rs0\",
-            members: [{ _id: 0, host: \"mongo:27017\" }]
-          })';
-        echo 'Replica set initialized.';
+        echo '🛠 Initiating MongoDB replica set…';
+        mongosh --host mongo \
+          -u \"${MONGO_INITDB_ROOT_USERNAME}\" \
+          -p \"${MONGO_INITDB_ROOT_PASSWORD}\" \
+          --authenticationDatabase admin \
+          --eval '
+            cfg = {
+              _id: \"rs0\",
+              members: [{ _id: 0, host: \"mongo:27017\" }]
+            };
+            printjson(cfg);
+            rs.initiate(cfg);
+          ';
+        echo '⏳ Waiting for PRIMARY…';
+        while true; do
+          STATE=$(mongosh --quiet \
+            --host mongo \
+            -u \"${MONGO_INITDB_ROOT_USERNAME}\" \
+            -p \"${MONGO_INITDB_ROOT_PASSWORD}\" \
+            --authenticationDatabase admin \
+            --eval 'print(rs.status().myState)' || echo "NR")
+          if [ \"${STATE}\" = \"1\" ]; then
+            echo \"✅ PRIMARY elected (\${STATE}).\";
+            break;
+          else
+            echo \"… still in state \${STATE}, retrying in 2s…\";
+            sleep 2;
+          fi
+        done
+        echo '🛠 Replica set is now PRIMARY. Initialization done.';
       "
     env_file:
       - .env
