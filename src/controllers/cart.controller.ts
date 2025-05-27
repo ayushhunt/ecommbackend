@@ -50,7 +50,6 @@ export const addItemsToCart = async (req: Request, res: Response) => {
       });
       return;
     }
-    console.log('products', products);
     for (const product of products) {
       const { productId, name, price, image,quantity } = product;
       if (!productId || !name || !price || !image || !quantity) {
@@ -114,7 +113,6 @@ export const updateCartItem = async (req: Request, res: Response) => {
     const userId = req.user.id;
     const { productId } = req.params;
     const { quantity } = req.body;
-    
     // Validate input
     if (!productId || !quantity || quantity < 1) {
       res.status(400).json({
@@ -168,7 +166,16 @@ export const removeCartItem = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { productId } = req.params;
-    
+  
+    // Validate productId
+    if (!productId) {
+      res.status(400).json({
+        success: false,
+        message: 'Product ID is required'
+      });
+      return;
+    }
+
     const cart = await Cart.findOne({ userId });
     
     if (!cart) {
@@ -178,9 +185,21 @@ export const removeCartItem = async (req: Request, res: Response) => {
       });
       return;
     }
+
+    // Check if item exists in cart
+    const itemIndex = cart.items.findIndex(item => item.productId.toString() === productId);
     
+    if (itemIndex === -1) {
+      res.status(404).json({
+        success: false,
+        message: 'Item not found in cart'
+      });
+      return;
+    }
+
     // Remove item from cart
-    cart.items = cart.items.filter(item => item.productId !== productId);
+    cart.items.splice(itemIndex, 1); 
+
     await cart.save();
     
     res.status(200).json({
