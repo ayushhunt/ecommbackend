@@ -40,7 +40,7 @@ export const getCart = async (req: Request, res: Response) => {
 export const addItemsToCart = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const products: ICartItem[] = req.body.products; // Expecting array of products
+    const products: ICartItem[] = req.body.products;
 
     // Validate input
     if (!Array.isArray(products) || products.length === 0) {
@@ -50,8 +50,10 @@ export const addItemsToCart = async (req: Request, res: Response) => {
       });
       return;
     }
+
+    // Validate each product
     for (const product of products) {
-      const { productId, name, price, image,quantity } = product;
+      const { productId, name, price, image, quantity } = product;
       if (!productId || !name || !price || !image || !quantity) {
         res.status(400).json({
           success: false,
@@ -72,16 +74,25 @@ export const addItemsToCart = async (req: Request, res: Response) => {
     }
 
     for (const product of products) {
-      const { productId, name, price, quantity = 1, image } = product;
+      const { productId, name, price, quantity = 1, image, discount=1 } = product;
       const itemIndex = cart.items.findIndex(item => item.productId === productId);
 
+      // Calculate finalPrice with discount
+      const finalPrice = price * (1 - discount / 100);
+
       if (itemIndex > -1) {
+        // Update existing item
         cart.items[itemIndex].quantity += quantity;
+        cart.items[itemIndex].discount = discount;
+        cart.items[itemIndex].finalPrice = finalPrice;
       } else {
+        // Add new item
         cart.items.push({
           productId,
           name,
           price,
+          discount,
+          finalPrice,
           quantity,
           image
         });
@@ -95,7 +106,6 @@ export const addItemsToCart = async (req: Request, res: Response) => {
       message: 'Items added to cart',
       data: cart
     });
-
   } catch (error: any) {
     console.error('Error adding items to cart:', error);
     res.status(500).json({
@@ -112,8 +122,8 @@ export const updateCartItem = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { productId } = req.params;
-    const { quantity } = req.body;
-    // Validate input
+    const { quantity, discount } = req.body;
+
     if (!productId || !quantity || quantity < 1) {
       res.status(400).json({
         success: false,
@@ -121,9 +131,9 @@ export const updateCartItem = async (req: Request, res: Response) => {
       });
       return;
     }
-    
+
     const cart = await Cart.findOne({ userId });
-    
+
     if (!cart) {
       res.status(404).json({
         success: false,
@@ -131,9 +141,9 @@ export const updateCartItem = async (req: Request, res: Response) => {
       });
       return;
     }
-    
+
     const itemIndex = cart.items.findIndex(item => item.productId === productId);
-    
+
     if (itemIndex === -1) {
       res.status(404).json({
         success: false,
@@ -141,17 +151,24 @@ export const updateCartItem = async (req: Request, res: Response) => {
       });
       return;
     }
-    
-    // Update item quantity
+
+    // Update item quantity and discount if provided
     cart.items[itemIndex].quantity = quantity;
+    if (discount !== undefined) {
+      cart.items[itemIndex].discount = discount;
+      // Recalculate finalPrice
+      cart.items[itemIndex].finalPrice = 
+        cart.items[itemIndex].price * (1 - discount / 100);
+    }
+
     await cart.save();
-    
+
     res.status(200).json({
       success: true,
       message: 'Cart item updated',
       data: cart
     });
-  } catch (error:any) {
+  } catch (error: any) {
     console.error('Error updating cart item:', error);
     res.status(500).json({
       success: false,
@@ -288,7 +305,6 @@ export const initiateCheckout = async (req: Request, res: Response) => {
     
     for (const item of cart.items) {
       const product = await Product.findById(item.productId);
-      console.log('product', product);
       if (!product) {
         res.status(400).json({
           success: false,
@@ -306,13 +322,16 @@ export const initiateCheckout = async (req: Request, res: Response) => {
         return;
       }
       
-      const itemPrice = product.price * item.quantity;
+      // Use finalPrice for total calculation if available
+      const itemPrice = (item.finalPrice || product.price) * item.quantity;
       totalAmount += itemPrice;
       
       orderItems.push({
         product: item.productId,
         quantity: item.quantity,
         price: product.price,
+        discount: item.discount || product.discount || 0,
+        finalPrice: item.finalPrice || product.price,
         name: product.name,
         image: product.images[0]
       });

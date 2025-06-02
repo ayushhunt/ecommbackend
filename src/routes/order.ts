@@ -11,7 +11,8 @@ import {
   getOrderById,
   updateOrderStatus,
   deleteOrder,
-  getOrderStatistics
+  getOrderStatistics,
+  downloadInvoice
 } from '../controllers/orders.controller';
 
 // Import middleware (these would be your auth middlewares)
@@ -23,6 +24,7 @@ const router = express.Router();
 router.post('/orders', authenticate, createOrder);
 router.get('/user/orders', authenticate, getUserOrders);
 router.get('/user/orders/:id', authenticate, getUserOrderById);
+router.get('/user/orders/:id/invoice', authenticate, downloadInvoice);
 router.patch('/user/orders/:id/cancel', authenticate, cancelOrder);
 
 // ===== ADMIN ROUTES =====

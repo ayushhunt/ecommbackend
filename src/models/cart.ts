@@ -5,6 +5,8 @@ export interface ICartItem {
   productId: string;
   name: string;
   price: number;
+  discount?: number;
+  finalPrice?: number;
   quantity: number;
   image: string;
 }
@@ -41,6 +43,16 @@ const CartSchema: Schema = new Schema(
           required: true,
           min: 0,
         },
+        discount: {
+          type: Number,
+          default: 0,
+          min: 0,
+          max: 100,
+        },
+        finalPrice: {
+          type: Number,
+          min: 0,
+        },
         quantity: {
           type: Number,
           required: true,
@@ -66,11 +78,18 @@ const CartSchema: Schema = new Schema(
 
 // Pre-save hook to calculate total price
 CartSchema.pre('save', function (this: Document & ICart, next) {
+  this.items.forEach(item => {
+    const discount = item.discount || 0;
+    item.finalPrice = item.price * (1 - discount / 100);
+  });
+
   this.totalPrice = this.items.reduce(
-    (acc, item) => acc + item.price * item.quantity,
+    (acc, item) => acc + (item.finalPrice || item.price) * item.quantity,
     0
   );
+
   next();
 });
+
 
 export const Cart = mongoose.model<ICart>('Cart', CartSchema);

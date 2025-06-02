@@ -10,6 +10,17 @@ export const createProduct = async (req: Request, res: Response) => {
   try {
     const productData = req.body;
 
+    // Validate discount if provided
+    if (productData.discount !== undefined) {
+      if (productData.discount < 0 || productData.discount > 100) {
+        res.status(400).json({
+          success: false,
+          message: 'Discount must be between 0 and 100'
+        });
+        return;
+      }
+    }
+
     // Generate full public URLs for uploaded images
     if (req.files && Array.isArray(req.files)) {
       productData.images = (req.files as Express.Multer.File[]).map(file => {
@@ -42,7 +53,9 @@ export const getProducts = async (req: Request, res: Response) => {
     const { 
       category, 
       minPrice, 
-      maxPrice, 
+      maxPrice,
+      minDiscount, 
+      maxDiscount,
       sort = 'createdAt', 
       order = 'desc',
       page = 1,
@@ -61,6 +74,13 @@ export const getProducts = async (req: Request, res: Response) => {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
+    }
+
+    // Add discount filter
+    if (minDiscount || maxDiscount) {
+      filter.discount = {};
+      if (minDiscount) filter.discount.$gte = Number(minDiscount);
+      if (maxDiscount) filter.discount.$lte = Number(maxDiscount);
     }
     
     // Add text search if provided
@@ -144,6 +164,17 @@ export const updateProduct = async (req: Request, res: Response) => {
     const { id } = req.params;
     const updateData = req.body;
     
+    // Validate discount if it's being updated
+    if (updateData.discount !== undefined) {
+      if (updateData.discount < 0 || updateData.discount > 100) {
+        res.status(400).json({
+          success: false,
+          message: 'Discount must be between 0 and 100'
+        });
+        return;
+      }
+    }
+    
     const product = await Product.findById(id);
     
     if (!product) {
@@ -165,14 +196,12 @@ export const updateProduct = async (req: Request, res: Response) => {
       message: 'Product updated successfully',
       data: updatedProduct
     });
-    return;
   } catch (error: any) {
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to update product',
       error: error
     });
-    return;
   }
 };
 

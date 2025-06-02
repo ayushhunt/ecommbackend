@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Order } from '../models/order';
 import { Product } from '../models/product';
 import { DeliveryStatus, PaymentStatus } from '../models/order';
+import PDFDocument from "pdfkit";
 import mongoose from 'mongoose';
 
 // ===== USER ENDPOINTS =====
@@ -99,6 +100,7 @@ interface CreateOrderRequest {
   shippingAddress: any;
 }
 
+// Update createOrder function with discount and finalPrice handling
 export const createOrder = async (req: Request, res: Response) => {
   const stockUpdates: Array<{ productId: string; quantity: number }> = [];
   
@@ -156,14 +158,13 @@ export const createOrder = async (req: Request, res: Response) => {
     let totalAmount = 0;
     const orderItems = [];
 
-    // Process each item with atomic stock updates
+    // Process each item with atomic stock updates and discount handling
     for (const item of items) {
-      // Atomic stock check and update
       const updatedProduct = await Product.findOneAndUpdate(
         {
           _id: item.product,
-          stock: { $gte: item.quantity }, // Ensure sufficient stock
-          isActive: { $ne: false } // Ensure product is active
+          stock: { $gte: item.quantity },
+          isActive: { $ne: false }
         },
         { 
           $inc: { stock: -item.quantity }
@@ -197,13 +198,21 @@ export const createOrder = async (req: Request, res: Response) => {
         quantity: item.quantity
       });
 
+      // Calculate final price with discount
+      const discount = updatedProduct.discount || 0;
+      const finalPrice = updatedProduct.price * (1 - discount / 100);
+
       orderItems.push({
         product: item.product,
         quantity: item.quantity,
-        price: updatedProduct.price
+        price: updatedProduct.price,
+        discount: discount,
+        finalPrice: finalPrice,
+        name: updatedProduct.name,
+        image: updatedProduct.images[0]
       });
 
-      totalAmount += updatedProduct.price * item.quantity;
+      totalAmount += finalPrice * item.quantity;
     }
 
     // Validate total amount
@@ -414,6 +423,78 @@ export const getUserOrderById = async (req: Request, res: Response) => {
   }
 };
 
+
+export const downloadInvoice = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id; // Ensure auth middleware adds user
+
+    const order = await Order.findOne({ _id: id, user: userId }).populate({
+      path: 'items.product',
+      select: 'name description images'
+    });
+
+    if (!order) {
+      res.status(404).json({ success: false, message: "Order not found" });
+      return;
+    }
+
+    // Set response headers for file download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=invoice-${order._id}.pdf`);
+
+    // Create PDF
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+
+    // --- Header ---
+    doc.fontSize(20).text("Invoice", { align: "center" });
+    doc.moveDown();
+
+    // --- Order Info ---
+    doc.fontSize(12).text(`Order ID: ${order._id}`);
+    doc.text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`);
+    doc.text(`Payment Method: ${order.paymentMethod}`);
+    doc.text(`Payment Status: ${order.paymentStatus}`);
+    doc.text(`Delivery Status: ${order.deliveryStatus}`);
+    doc.moveDown();
+
+    // --- Shipping Address ---
+    doc.fontSize(14).text("Shipping Address", { underline: true });
+    const { shippingAddress } = order;
+    doc.fontSize(12).text(`${shippingAddress.name}`);
+    doc.text(`${shippingAddress.street}, ${shippingAddress.city}, ${shippingAddress.state} - ${shippingAddress.zipCode}`);
+    doc.text(`Phone: ${shippingAddress.phone}`);
+    doc.moveDown();
+
+    // --- Order Items ---
+    doc.fontSize(14).text("Order Items", { underline: true });
+    order.items.forEach((item: any, i: number) => {
+      const y = doc.y + 10;
+      doc.fontSize(12).text(
+        `${i + 1}. ${item.product?.name || item.name} - Qty: ${item.quantity} - ₹${item.finalPrice} x ${item.quantity} = ₹${item.finalPrice * item.quantity}`,
+        { continued: false }
+      );
+    });
+
+    doc.moveDown();
+    doc.fontSize(14).text(`Total Amount: ₹${order.totalAmount}`, { align: "right" });
+
+    // Finalize
+    doc.end();
+  } catch (error: any) {
+    console.error("PDF generation failed:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate invoice",
+      error: error.message
+    });
+  }
+};
+
+
+
+
 // Cancel an order (user)
 // export const cancelOrder = async (req: Request, res: Response) => {
 //   const session = await mongoose.startSession();
@@ -601,6 +682,9 @@ export const cancelOrder = async (req: Request, res: Response) => {
     return;
   }
 };
+
+
+
 // ===== ADMIN ENDPOINTS =====
 
 
@@ -649,22 +733,48 @@ export const getAllOrders = async (req: Request, res: Response) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
-      .select('user createdAt')
-    
-    const totalOrders = await Order.countDocuments(filter);
-    
-    // Calculate statistics
-    const totalRevenue = await Order.aggregate([
+      .populate({
+        path: 'items.product',
+        select: 'name images price discount'
+      });
+
+    // Calculate statistics with discount consideration
+    const orderStats = await Order.aggregate([
       { $match: { ...filter, paymentStatus: PaymentStatus.COMPLETED } },
-      { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+      { $group: { 
+        _id: null, 
+        totalRevenue: { $sum: "$totalAmount" },
+        totalDiscount: {
+          $sum: {
+            $reduce: {
+              input: "$items",
+              initialValue: 0,
+              in: {
+                $add: [
+                  "$$value",
+                  {
+                    $multiply: [
+                      { $subtract: ["$$this.price", { $ifNull: ["$$this.finalPrice", "$$this.price"] }] },
+                      "$$this.quantity"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }}
     ]);
+
+    const totalOrders = await Order.countDocuments(filter);
     
     res.status(200).json({
       success: true,
       message: 'Orders retrieved successfully',
       data: orders,
       statistics: {
-        totalRevenue: totalRevenue.length ? totalRevenue[0].total : 0
+        totalRevenue: orderStats.length ? orderStats[0].totalRevenue : 0,
+        totalDiscount: orderStats.length ? orderStats[0].totalDiscount : 0
       },
       pagination: {
         currentPage: pageNum,
@@ -673,7 +783,6 @@ export const getAllOrders = async (req: Request, res: Response) => {
         limit: limitNum
       }
     });
-    return;
   } catch (error: any) {
     res.status(500).json({
       success: false,

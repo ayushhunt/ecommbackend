@@ -19,6 +19,8 @@ interface IOrderItem {
   product: Types.ObjectId;
   quantity: number;
   price: number;
+  discount?: number;
+  finalPrice?: number;
   name?: string; // Add product name for easier reference
   image?: string; // Add product image for easier reference
 }
@@ -48,13 +50,15 @@ interface IOrder extends Document {
 }
 
 const orderSchema = new Schema<IOrder>({
-  user: { type: String,  required: true,unique: true },
+  user: { type: String,  required: true },
   items: [{
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     quantity: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true, min: 0 },
-    name: { type: String }, // Optional but useful
-    image: { type: String } // Optional but useful
+    discount: { type: Number, default: 0, min: 0, max: 100 },
+    finalPrice: { type: Number, min: 0 },
+    name: { type: String }, 
+    image: { type: String } 
   }],
   totalAmount: { type: Number, required: true, min: 0 },
   paymentStatus: { 
