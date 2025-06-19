@@ -133,7 +133,7 @@ export const sendVerificationEmail = async (email: string, token: string) => {
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${token}`;
     
     const { data, error } = await resend.emails.send({
-      from: 'onboarding@resend.dev',
+      from:  process.env.FROM_EMAIL || 'noreply@yourdomain.com',
       to: [email],
       subject: 'Verify Your Email Address',
       html: `
@@ -211,7 +211,7 @@ If you didn't create an account, you can safely ignore this email.
 export const sendWelcomeEmail = async (email: string, name: string) => {
   try {
     const { data, error } = await resend.emails.send({
-      from: `${process.env.APP_NAME} <hello@${process.env.RESEND_DOMAIN}>`,
+      from: process.env.FROM_EMAIL || 'noreply@yourdomain.com',
       to: [email],
       subject: `Welcome to ${process.env.APP_NAME}!`,
       html: `
@@ -385,81 +385,6 @@ export const emailVerificationToken = async (req: Request, res: Response) => {
 
 
 
-// // Request email verification
-// export const emailVerification = async (req:Request, res:Response) => {
-//   try {
-//     const userId = req.user.id;
-    
-//     const user = await prisma.user.findUnique({
-//       where: { id: userId },
-//     });
-    
-//     if (!user) {
-//       res.status(404).json({ message: 'User not found' });
-//       return;
-//     }
-    
-//     if (user.verified) {
-//       res.status(400).json({ message: 'Email already verified' });
-//       return;
-//     }
-//     // Generate verification token
-//     const token = randomBytes(32).toString('hex');
-//     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    
-//     await prisma.verification.create({
-//       data: {
-//         token,
-//         type: 'EMAIL',
-//         expiresAt,
-//         userId,
-//       },
-//     });
-    
-//     // Here you would send verification email with token
-//     // sendVerificationEmail(user.email, token);
-    
-//     res.status(200).json({ message: 'Verification email sent' });
-//   } catch (error) {
-//     console.error('Error requesting email verification:', error);
-//     res.status(500).json({ message: 'Failed to request email verification' });
-//   }
-// };
-
-// // Verify email with token
-// export const emailVerificationToken =  async (req:Request, res:Response) => {
-//   try {
-//     const { token } = req.params;
-    
-//     const verification = await prisma.verification.findFirst({
-//       where: {
-//         token,
-//         type: 'EMAIL',
-//         expiresAt: { gt: new Date() },
-//       },
-//       include: { user: true },
-//     });
-    
-//     if (!verification) {
-//       res.status(400).json({ message: 'Invalid or expired token' });
-//       return;
-//     }
-    
-//     await prisma.user.update({
-//       where: { id: verification.userId },
-//       data: { verified: true },
-//     });
-    
-//     await prisma.verification.delete({
-//       where: { id: verification.id },
-//     });
-    
-//     res.status(200).json({ message: 'Email verified successfully' });
-//   } catch (error) {
-//     console.error('Error verifying email:', error);
-//     res.status(500).json({ message: 'Failed to verify email' });
-//   }
-// };
 
 // --- Address CRUD operations ---
 
