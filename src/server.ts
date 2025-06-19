@@ -6,7 +6,7 @@ import {prisma } from './config/prisma';
 
 import authRouter from './routes/auth';
 import productRouter from './routes/product';
-import { authenticate } from './middlewares/auth.middleware';
+import { authenticate, authenticateAdmin } from './middlewares/auth.middleware';
 import dbConnect from './config/mdb';
 import orderRouter from './routes/order';
 import reviewRouter from './routes/review';
@@ -14,12 +14,18 @@ import cartRouter from './routes/cart';
 import wishlistRouter from './routes/wishlist'
 import recommendationRouter from './routes/recommendation';
 import profileRouter from './routes/profile';
+import adminRouter from './routes/admin';
+import path from 'path';
+import contactRouter from './routes/contact';
 
 // Load environment variables
 dotenv.config();
 dbConnect();
 
 const app = express();
+
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 
 // Middleware
 app.use(express.json()); 
@@ -39,7 +45,7 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -54,6 +60,10 @@ app.use("/v1",cartRouter)
 app.use("/v1/wish",authenticate,wishlistRouter);
 app.use("/v1/rec",recommendationRouter);
 app.use("/v1/user",authenticate,profileRouter)
+app.use('/v1/admin/users',authenticateAdmin,adminRouter)
+app.use('/v1', contactRouter); // Add this line
+
+
 
 // Protected route example
 // app.get('/profile', authenticate, (req, res) => {

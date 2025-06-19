@@ -72,3 +72,15 @@ model Verification {
 }
 
 
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  otp       String?  // Optional: if you want to use OTP instead of token
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("password_resets")
+}

@@ -12,6 +12,7 @@ const router = express.Router();
 router.get('/', getProfile);
 router.patch('/update', updateProfile);
 
+
 router.get('/addresses', getAddress);
 router.get('/addresses/:id', getAddressById);
 router.post('/addresses', addAddress);

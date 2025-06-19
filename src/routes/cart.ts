@@ -17,9 +17,9 @@ const router = express.Router();
 // Cart routes
 router.get('/',authenticate, getCart);
 router.post('/add',authenticate, addItemsToCart);
-router.put('/update/:productId', updateCartItem);
-router.delete('/remove/:productId', removeCartItem);
-router.delete('/clear', clearCart);
+router.put('/update/:productId',authenticate, updateCartItem);
+router.delete('/remove/:productId',authenticate, removeCartItem);
+router.delete('/clear',authenticate, clearCart);
 router.post('/initiatecheckout',authenticate, initiateCheckout);
 router.post('/verifypayment',authenticate,verifyPayment)
 

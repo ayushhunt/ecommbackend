@@ -1,9 +1,10 @@
 // src/services/recommendationService.ts
 
-import {Product} from '../models/product';
-import {Order} from '../models/order';
-import Wishlist from '../models/wishlist';
-import {Cart} from '../models/cart';
+import { Product } from '../models/product';
+import { Order } from '../models/order';
+import { Wishlist } from '../models/wishlist';
+import { Cart } from '../models/cart';
+import { Types } from 'mongoose';
 
 interface RecommendationOptions {
   userId?: string;
@@ -32,28 +33,51 @@ export class RecommendationService {
       // Get user's cart
       const cart = await Cart.findOne({ userId });
       
-      // Extract product ids and categories from user's history
+      // Extract product ids and variants from user's history
       const purchasedProductIds = orders.flatMap(order => 
         order.items.map(item => item.product)
       );
       
-      const wishlistProductIds = wishlist ? wishlist.items.map(item => item.productId) : [];
-      const cartProductIds = cart ? cart.items.map(item => item.productId) : [];
+      const wishlistProductIds = wishlist ? wishlist.items.map(item => item.product) : [];
+      const cartProductIds = cart ? cart.items.map(item => item.product) : [];
+      
+      // Collect variant IDs as well
+      const wishlistVariantIds = wishlist ? 
+        wishlist.items
+          .filter(item => item.variantId)
+          .map(item => item.variantId) : [];
+      
+      const cartVariantIds = cart ? 
+        cart.items
+          .filter(item => item.variantId)
+          .map(item => item.variantId) : [];
       
       // Get all products to extract categories
       const userProducts = await Product.find({
         _id: { $in: [...purchasedProductIds, ...wishlistProductIds, ...cartProductIds] }
       });
       
-      // Extract categories from user's products
+      // Extract categories and consider variant preferences
       const categories = userProducts.map(product => product.category);
       const uniqueCategories = [...new Set(categories)];
       
-      // Find recommendations based on categories user has shown interest in
+      // Find recommendations based on categories and variant preferences
       const recommendations = await Product.find({
         _id: { $nin: [...purchasedProductIds, ...wishlistProductIds, ...cartProductIds] },
         category: { $in: uniqueCategories },
-        stock: { $gt: 0 } // Only recommend in-stock products
+        stock: { $gt: 0 }, // Only recommend in-stock products
+        $or: [
+          { hasVariants: false },
+          {
+            hasVariants: true,
+            'variants': {
+              $elemMatch: {
+                stock: { $gt: 0 },
+                isActive: true
+              }
+            }
+          }
+        ]
       })
         .sort({ averageRating: -1 })
         .limit(limit);
@@ -67,7 +91,19 @@ export class RecommendationService {
             $nin: [...purchasedProductIds, ...wishlistProductIds, ...cartProductIds, 
                   ...recommendations.map(p => p._id)]
           },
-          stock: { $gt: 0 }
+          stock: { $gt: 0 },
+          $or: [
+            { hasVariants: false },
+            {
+              hasVariants: true,
+              'variants': {
+                $elemMatch: {
+                  stock: { $gt: 0 },
+                  isActive: true
+                }
+              }
+            }
+          ]
         })
           .sort({ averageRating: -1 })
           .limit(remainingNeeded);
@@ -101,11 +137,22 @@ export class RecommendationService {
         throw new Error('Product not found');
       }
       
-      // Find products in the same category
+      // Find products in the same category with available variants or stock
       const similarProducts = await Product.find({
         _id: { $ne: productId },
         category: product.category,
-        stock: { $gt: 0 }
+        $or: [
+          { hasVariants: false, stock: { $gt: 0 } },
+          {
+            hasVariants: true,
+            'variants': {
+              $elemMatch: {
+                stock: { $gt: 0 },
+                isActive: true
+              }
+            }
+          }
+        ]
       })
         .sort({ averageRating: -1 })
         .limit(limit);
@@ -168,12 +215,26 @@ export class RecommendationService {
     const limit = options.limit || 10;
     
     try {
-      // Combine different recommendation strategies
-      
-      // 1. Featured products (assuming you have a featured field)
+      // Update the product queries to consider variants
+      const variantStockCondition = {
+        $or: [
+          { hasVariants: false, stock: { $gt: 0 } },
+          {
+            hasVariants: true,
+            'variants': {
+              $elemMatch: {
+                stock: { $gt: 0 },
+                isActive: true
+              }
+            }
+          }
+        ]
+      };
+
+      // 1. Featured products
       const featuredProducts = await Product.find({ 
         featured: true,
-        stock: { $gt: 0 }
+        ...variantStockCondition
       }).limit(Math.ceil(limit / 3));
       
       const featuredIds = featuredProducts.map(p => p._id);

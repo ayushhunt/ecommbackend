@@ -6,6 +6,12 @@ import { prisma } from '../config/prisma';
 import { JWT_CONFIG, BCRYPT_ROUNDS } from '../config/auth';
 import { parse, serialize } from 'cookie';
 import { OAuth2Client } from 'google-auth-library';
+import { Resend } from 'resend';
+import crypto from 'crypto';
+
+
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 
 
@@ -117,15 +123,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.setHeader('Set-Cookie', [
       serialize('accessToken', accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
+        sameSite: 'lax',
         path: '/',
         maxAge: 15 * 60, // 15 minutes
       }),
       serialize('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
+        sameSite: 'lax',
         path: '/',
         maxAge: 7 * 24 * 60 * 60, // 7 days
       })
@@ -338,16 +344,16 @@ export const googleCallback= async (req: Request, res: Response) => {
     // Set HttpOnly refresh token cookie
     res.setHeader('Set-Cookie', serialize('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/auth/refresh-token', // your refresh endpoint
+      secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
+      sameSite: 'lax',
+      path: '/', // your refresh endpoint
       maxAge: 7 * 24 * 60 * 60, // in seconds
     }));
     res.setHeader('Set-Cookie', serialize('accessToken', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/auth/refresh-token', // your refresh endpoint
+      secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
+      sameSite: 'lax',
+      path: '/', // your refresh endpoint
       maxAge: 15 * 60, // in seconds
     }));
     // --- Response ---
@@ -382,15 +388,15 @@ export const logout = async (req: Request, res: Response) => {
     res.setHeader('Set-Cookie', [
       serialize('accessToken', '', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
+        sameSite: 'lax',
         path: '/',
         expires: new Date(0), // Immediately expire the cookie
       }),
       serialize('refreshToken', '', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: process.env.NODE_ENV === 'production' && req.protocol === 'https',
+        sameSite: 'lax',
         path: '/',
         expires: new Date(0), // Immediately expire the cookie
       }),
@@ -402,3 +408,338 @@ export const logout = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error during logout' });
   }
 };
+
+
+export const requestPasswordReset = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Email is required' 
+      });
+      return;
+    }
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({ 
+      where: { email: email.toLowerCase() } 
+    });
+
+    // Always return success for security (don't reveal if email exists)
+    if (!user) {
+      res.status(200).json({ 
+        success: true,
+        message: 'If an account with that email exists, we\'ve sent a password reset link.' 
+      });
+      return;
+    }
+
+    // Only allow password reset for email providers
+    if (user.provider !== 'email') {
+      res.status(400).json({ 
+        success: false,
+        message: `This account was created with ${user.provider}. Please use ${user.provider} to sign in.` 
+      });
+      return;
+    }
+
+    // Invalidate any existing password reset tokens
+    await prisma.passwordReset.updateMany({
+      where: { email: email.toLowerCase() },
+      data: { used: true }
+    });
+
+    // Generate secure token and OTP
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    // Create password reset record
+    await prisma.passwordReset.create({
+      data: {
+        email: email.toLowerCase(),
+        token: resetToken,
+        otp,
+        expiresAt,
+        used: false
+      }
+    });
+
+    // Send email with both token and OTP
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    
+    try {
+      await resend.emails.send({
+        from: process.env.FROM_EMAIL || 'noreply@yourdomain.com',
+        to: email,
+        subject: 'Reset Your Password',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Reset Your Password</h2>
+            <p>Hello ${user.name || 'there'},</p>
+            <p>We received a request to reset your password. You can reset it using either method below:</p>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3>Method 1: Click the link</h3>
+              <p>Click the button below to reset your password:</p>
+              <a href="${resetUrl}" 
+                 style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Reset Password
+              </a>
+            </div>
+
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3>Method 2: Use OTP</h3>
+              <p>Or use this 6-digit code:</p>
+              <div style="font-size: 24px; font-weight: bold; color: #007bff; letter-spacing: 4px; text-align: center; padding: 10px; background: white; border-radius: 4px;">
+                ${otp}
+              </div>
+            </div>
+
+            <p style="color: #666; font-size: 14px;">
+              This link and OTP will expire in 15 minutes. If you didn't request this, please ignore this email.
+            </p>
+            
+            <p style="color: #666; font-size: 12px;">
+              If the button doesn't work, copy and paste this link: ${resetUrl}
+            </p>
+          </div>
+        `
+      });
+
+      res.status(200).json({ 
+        success: true,
+        message: 'Password reset instructions sent to your email.' 
+      });
+    } catch (emailError) {
+      console.error('Email sending error:', emailError);
+      res.status(500).json({ 
+        success: false,
+        message: 'Failed to send email. Please try again.' 
+      });
+    }
+
+  } catch (error) {
+    console.error('Password reset request error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error' 
+    });
+  }
+};
+
+
+export const verifyResetToken = async (req: Request, res: Response) => {
+  try {
+    const { token, otp } = req.body;
+
+    if (!token && !otp) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Reset token or OTP is required' 
+      });
+      return;
+    }
+
+    let resetRecord;
+
+    if (token) {
+      // Verify token
+      resetRecord = await prisma.passwordReset.findFirst({
+        where: {
+          token,
+          used: false,
+          expiresAt: { gt: new Date() }
+        }
+      });
+    } else if (otp) {
+      // Verify OTP
+      resetRecord = await prisma.passwordReset.findFirst({
+        where: {
+          otp,
+          used: false,
+          expiresAt: { gt: new Date() }
+        }
+      });
+    }
+
+    if (!resetRecord) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Invalid or expired reset token/OTP' 
+      });
+      return;
+    }
+
+    // Check if user still exists
+    const user = await prisma.user.findUnique({
+      where: { email: resetRecord.email }
+    });
+
+    if (!user) {
+      res.status(400).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+      return;
+    }
+
+    res.status(200).json({ 
+      success: true,
+      message: 'Token verified successfully',
+      data: {
+        email: resetRecord.email,
+        token: resetRecord.token // Return token for password reset
+      }
+    });
+
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error' 
+    });
+  }
+};
+
+
+// Reset password
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, newPassword, confirmPassword } = req.body;
+
+    if (!token || !newPassword || !confirmPassword) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Token, new password, and confirm password are required' 
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Passwords do not match' 
+      });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Password must be at least 6 characters long' 
+      });
+      return;
+    }
+
+    // Find valid reset record
+    const resetRecord = await prisma.passwordReset.findFirst({
+      where: {
+        token,
+        used: false,
+        expiresAt: { gt: new Date() }
+      }
+    });
+
+    if (!resetRecord) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Invalid or expired reset token' 
+      });
+      return;
+    }
+
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email: resetRecord.email }
+    });
+
+    if (!user) {
+      res.status(400).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+      return;
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+    // Update user password and mark reset as used
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: hashedPassword,
+          verified: true, // Mark as verified if not already
+          updatedAt: new Date()
+        }
+      }),
+      prisma.passwordReset.update({
+        where: { id: resetRecord.id },
+        data: { used: true }
+      }),
+      // Invalidate all refresh tokens for security
+      prisma.refreshToken.deleteMany({
+        where: { userId: user.id }
+      })
+    ]);
+
+    res.status(200).json({ 
+      success: true,
+      message: 'Password reset successfully. Please login with your new password.' 
+    });
+
+  } catch (error) {
+    console.error('Password reset error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error' 
+    });
+  }
+};
+
+// Resend reset email
+export const resendResetEmail = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({ 
+        success: false,
+        message: 'Email is required' 
+      });
+      return;
+    }
+
+    // Check if there's a recent reset request (rate limiting)
+    const recentReset = await prisma.passwordReset.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        createdAt: { gt: new Date(Date.now() - 2 * 60 * 1000) } // 2 minutes
+      }
+    });
+
+    if (recentReset) {
+      res.status(429).json({ 
+        success: false,
+        message: 'Please wait 2 minutes before requesting another reset email.' 
+      });
+      return;
+    }
+
+    // Reuse the requestPasswordReset logic
+    await requestPasswordReset(req, res);
+
+  } catch (error) {
+    console.error('Resend reset email error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error' 
+    });
+  }
+};
+
+
