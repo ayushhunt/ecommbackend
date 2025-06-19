@@ -7,6 +7,10 @@ import {
   googleAuth,
   googleCallback,
   logout,
+  requestPasswordReset,
+  verifyResetToken,
+  resetPassword,
+  resendResetEmail,
 } from '../controllers/auth.controller';
 
 const router = express.Router();
@@ -20,5 +24,12 @@ router.post('/refresh-token',refreshToken)
 // // Google authentication
 router.get('/google',googleAuth);
 router.get('/google/callback',googleCallback);
+
+
+// Password reset routes
+router.post('/forgot-password', requestPasswordReset);
+router.post('/verify-reset-token', verifyResetToken);
+router.post('/reset-password', resetPassword);
+router.post('/resend-reset-email', resendResetEmail);
 
 export default router;

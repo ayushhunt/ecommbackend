@@ -91,250 +91,259 @@ import mongoose from 'mongoose';
 
 interface OrderItem {
   product: string;
+  variantId?: string;
   quantity: number;
 }
 
 interface CreateOrderRequest {
   items: OrderItem[];
   paymentMethod: string;
-  shippingAddress: any;
+  shippingAddress: {
+    name: string;
+    phone: string;
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+  };
 }
 
-// Update createOrder function with discount and finalPrice handling
-export const createOrder = async (req: Request, res: Response) => {
-  const stockUpdates: Array<{ productId: string; quantity: number }> = [];
+// // Update createOrder function with discount and finalPrice handling
+// export const createOrder = async (req: Request, res: Response) => {
+//   const stockUpdates: Array<{ 
+//     productId: string; 
+//     variantId?: string; 
+//     quantity: number 
+//   }> = [];
   
-  try {
-    const { items, paymentMethod, shippingAddress }: CreateOrderRequest = req.body;
-    const userId = req.user.id;
+//   try {
+//     const { items, paymentMethod, shippingAddress }: CreateOrderRequest = req.body;
+//     const userId = req.user.id;
 
-    // Input validation
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      res.status(400).json({
-        success: false,
-        message: 'Items array is required and cannot be empty'
-      });
-      return;
-    }
+//     // Input validation
+//     if (!items?.length || !paymentMethod || !shippingAddress) {
+//       res.status(400).json({
+//         success: false,
+//         message: 'Items, payment method, and shipping address are required'
+//       });
+//       return;
+//     }
 
-    if (!paymentMethod || !shippingAddress) {
-      res.status(400).json({
-        success: false,
-        message: 'Payment method and shipping address are required'
-      });
-      return;
-    }
+//     let totalAmount = 0;
+//     const orderItems = [];
 
-    // Validate item structure
-    for (const item of items) {
-      if (!item.product || !mongoose.Types.ObjectId.isValid(item.product)) {
-        res.status(400).json({
-          success: false,
-          message: `Invalid product ID: ${item.product}`
-        });
-        return;
-      }
+//     // Process each item and handle variants
+//     for (const item of items) {
+//       // Find the product
+//       const product = await Product.findById(item.product);
+//       if (!product) {
+//         throw new Error(`Product not found: ${item.product}`);
+//       }
 
-      if (!item.quantity || item.quantity <= 0 || !Number.isInteger(item.quantity)) {
-        res.status(400).json({
-          success: false,
-          message: `Invalid quantity for product ${item.product}. Must be a positive integer`
-        });
-        return;
-      }
-    }
+//       let variantPrice: number;
+//       let variant: any;
+//       let stockField: any;
+//       let updateQuery: any;
 
-    // Check for duplicate products in order
-    const productIds = items.map(item => item.product);
-    const uniqueProductIds = new Set(productIds);
-    if (productIds.length !== uniqueProductIds.size) {
-      res.status(400).json({
-        success: false,
-        message: 'Duplicate products in order. Please combine quantities for the same product'
-      });
-      return;
-    }
+//       if (product.hasVariants) {
+//         if (!item.variantId) {
+//           throw new Error(`Variant ID is required for product: ${product.name}`);
+//         }
 
-    let totalAmount = 0;
-    const orderItems = [];
+//         // Find the specific variant
+//         variant = product.variants?.id(item.variantId);
+//         if (!variant) {
+//           throw new Error(`Variant not found for product: ${product.name}`);
+//         }
 
-    // Process each item with atomic stock updates and discount handling
-    for (const item of items) {
-      const updatedProduct = await Product.findOneAndUpdate(
-        {
-          _id: item.product,
-          stock: { $gte: item.quantity },
-          isActive: { $ne: false }
-        },
-        { 
-          $inc: { stock: -item.quantity }
-        },
-        { 
-          new: true,
-          runValidators: true
-        }
-      );
+//         if (!variant.isActive) {
+//           throw new Error(`Variant is no longer available for: ${product.name}`);
+//         }
 
-      if (!updatedProduct) {
-        // Check specific failure reason
-        const product = await Product.findById(item.product);
-        
-        if (!product) {
-          throw new Error(`Product not found: ${item.product}`);
-        }
-        
-        
-        
-        if (product.stock < item.quantity) {
-          throw new Error(`Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`);
-        }
-        
-        throw new Error(`Failed to reserve stock for product: ${product.name}`);
-      }
+//         if (variant.stock < item.quantity) {
+//           throw new Error(
+//             `Insufficient stock for variant of ${product.name}. Available: ${variant.stock}, Requested: ${item.quantity}`
+//           );
+//         }
 
-      // Track successful stock update for potential rollback
-      stockUpdates.push({
-        productId: item.product,
-        quantity: item.quantity
-      });
+//         variantPrice = variant.price || product.price;
+//         stockField = `variants.$.stock`;
+//         updateQuery = {
+//           _id: product._id,
+//           "variants._id": item.variantId,
+//           "variants.stock": { $gte: item.quantity }
+//         };
+//       } else {
+//         if (item.variantId) {
+//           throw new Error(`Product ${product.name} does not have variants`);
+//         }
 
-      // Calculate final price with discount
-      const discount = updatedProduct.discount || 0;
-      const finalPrice = updatedProduct.price * (1 - discount / 100);
+//         if (product.stock < item.quantity) {
+//           throw new Error(
+//             `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`
+//           );
+//         }
 
-      orderItems.push({
-        product: item.product,
-        quantity: item.quantity,
-        price: updatedProduct.price,
-        discount: discount,
-        finalPrice: finalPrice,
-        name: updatedProduct.name,
-        image: updatedProduct.images[0]
-      });
+//         variantPrice = product.price;
+//         stockField = "stock";
+//         updateQuery = {
+//           _id: product._id,
+//           stock: { $gte: item.quantity }
+//         };
+//       }
 
-      totalAmount += finalPrice * item.quantity;
-    }
+//       // Update stock atomically
+//       const updatedProduct = await Product.findOneAndUpdate(
+//         updateQuery,
+//         { 
+//           $inc: { [stockField]: -item.quantity },
+//           $set: { updatedAt: new Date() }
+//         },
+//         { 
+//           new: true,
+//           runValidators: true
+//         }
+//       );
 
-    // Validate total amount
-    if (totalAmount <= 0) {
-      throw new Error('Invalid order total amount');
-    }
+//       if (!updatedProduct) {
+//         throw new Error(`Failed to update stock for product: ${product.name}`);
+//       }
 
-    // Create order with validation
-    const orderData = {
-      user: userId,
-      items: orderItems,
-      totalAmount,
-      paymentMethod,
-      shippingAddress,
-      paymentStatus: PaymentStatus.PENDING,
-      deliveryStatus: DeliveryStatus.PENDING,
-      createdAt: new Date()
-    };
+//       // Track stock update for potential rollback
+//       stockUpdates.push({
+//         productId: product._id.toString(),
+//         variantId: item.variantId,
+//         quantity: item.quantity
+//       });
 
-    const order = new Order(orderData);
-    
-    // Validate order before saving
-    const validationError = order.validateSync();
-    if (validationError) {
-      throw new Error(`Order validation failed: ${validationError.message}`);
-    }
+//       // Calculate final price with discount
+//       const discount = product.discount || 0;
+//       const finalPrice = variantPrice * (1 - discount / 100);
 
-    await order.save();
+//       // Create order item
+//       orderItems.push({
+//         product: product._id,
+//         variantId: item.variantId || null,
+//         quantity: item.quantity,
+//         price: variantPrice,
+//         discount: discount,
+//         finalPrice: finalPrice,
+//         name: product.name,
+//         image: product.images[0],
+//         color: variant?.color || null,
+//         size: variant?.size || null,
+//         sku: variant?.sku || null
+//       });
 
-    // Populate product details for response
-    const populatedOrder = await Order.findById(order._id)
-      .populate({
-        path: 'items.product',
-        select: 'name images price'
-      })
-      .populate({
-        path: 'user',
-        select: 'name email'
-      });
+//       totalAmount += finalPrice * item.quantity;
+//     }
 
-    if (!populatedOrder) {
-      throw new Error('Failed to retrieve created order');
-    }
+//     // Create order
+//     const order = new Order({
+//       user: userId,
+//       items: orderItems,
+//       totalAmount,
+//       paymentMethod,
+//       shippingAddress,
+//       paymentStatus: PaymentStatus.PENDING,
+//       deliveryStatus: DeliveryStatus.PENDING
+//     });
 
-    res.status(201).json({
-      success: true,
-      message: 'Order created successfully',
-      data: populatedOrder
-    });
-    return;
+//     // Validate order
+//     const validationError = order.validateSync();
+//     if (validationError) {
+//       throw new Error(`Order validation failed: ${validationError.message}`);
+//     }
 
-  } catch (error: any) {
-    console.error('Error creating order:', {
-      userId: req.user?.id,
-      items: req.body?.items,
-      error: error.message,
-      stack: error.stack
-    });
+//     await order.save();
 
-    // Rollback stock updates on failure
-    if (stockUpdates.length > 0) {
-      console.log('Rolling back stock updates for failed order...');
+//     // Populate product details for response
+//     const populatedOrder = await order.populateProducts();
+
+//     res.status(201).json({
+//       success: true,
+//       message: 'Order created successfully',
+//       data: populatedOrder
+//     });
+
+//   } catch (error: any) {
+//     console.error('Error creating order:', {
+//       userId: req.user?.id,
+//       error: error.message,
+//       stack: error.stack
+//     });
+
+//     // Rollback stock updates on failure
+//     if (stockUpdates.length > 0) {
+//       console.log('Rolling back stock updates...');
       
-      const rollbackResults = await Promise.allSettled(
-        stockUpdates.map(async ({ productId, quantity }) => {
-          try {
-            const result = await Product.findByIdAndUpdate(
-              productId,
-              { $inc: { stock: quantity } },
-              { new: true }
-            );
-            
-            if (!result) {
-              console.error(`Failed to rollback stock for product: ${productId}`);
-            }
-            
-            return { productId, success: !!result };
-          } catch (rollbackError) {
-            console.error(`Rollback error for product ${productId}:`, rollbackError);
-            return { productId, success: false, error: rollbackError };
-          }
-        })
-      );
+//       const rollbackResults = await Promise.allSettled(
+//         stockUpdates.map(async ({ productId, variantId, quantity }) => {
+//           try {
+//             let updateQuery: any;
+//             let updateField: string;
 
-      const failedRollbacks = rollbackResults
-        .filter(result => result.status === 'rejected' || 
-                (result.status === 'fulfilled' && !result.value.success))
-        .length;
+//             if (variantId) {
+//               updateQuery = { 
+//                 _id: productId,
+//                 "variants._id": variantId
+//               };
+//               updateField = "variants.$.stock";
+//             } else {
+//               updateQuery = { _id: productId };
+//               updateField = "stock";
+//             }
 
-      if (failedRollbacks > 0) {
-        console.error(`Critical: ${failedRollbacks} stock rollbacks failed. Manual intervention required.`);
-        // In production, send alert to admin/monitoring system
-      }
-    }
+//             const result = await Product.findOneAndUpdate(
+//               updateQuery,
+//               { $inc: { [updateField]: quantity } },
+//               { new: true }
+//             );
 
-    // Determine appropriate error status and message
-    let statusCode = 500;
-    let message = 'Failed to create order due to server error';
+//             if (!result) {
+//               console.error(`Failed to rollback stock for product: ${productId}`);
+//             }
 
-    if (error.message.includes('not found') || 
-        error.message.includes('no longer available')) {
-      statusCode = 404;
-      message = error.message;
-    } else if (error.message.includes('Insufficient stock') || 
-               error.message.includes('Invalid') ||
-               error.message.includes('validation failed') ||
-               error.message.includes('Duplicate products')) {
-      statusCode = 400;
-      message = error.message;
-    }
+//             return { productId, variantId, success: !!result };
+//           } catch (rollbackError) {
+//             console.error(`Rollback error for product ${productId}:`, rollbackError);
+//             return { productId, variantId, success: false, error: rollbackError };
+//           }
+//         })
+//       );
 
-    res.status(statusCode).json({
-      success: false,
-      message,
-      ...(process.env.NODE_ENV === 'development' && { 
-        error: error.message,
-        stockUpdatesAttempted: stockUpdates.length 
-      })
-    });
-    return;
-  }
-};
+//       const failedRollbacks = rollbackResults
+//         .filter(result => result.status === 'rejected' || 
+//                 (result.status === 'fulfilled' && !result.value.success))
+//         .length;
+
+//       if (failedRollbacks > 0) {
+//         console.error(`Critical: ${failedRollbacks} stock rollbacks failed`);
+//       }
+//     }
+
+//     let statusCode = 500;
+//     let message = 'Failed to create order';
+
+//     if (error.message.includes('not found') || 
+//         error.message.includes('no longer available')) {
+//       statusCode = 404;
+//     } else if (error.message.includes('Insufficient stock') || 
+//                error.message.includes('validation failed')) {
+//       statusCode = 400;
+//     }
+
+//     res.status(statusCode).json({
+//       success: false,
+//       message: error.message,
+//       ...(process.env.NODE_ENV === 'development' && { 
+//         error: error.message,
+//         stockUpdatesAttempted: stockUpdates.length 
+//       })
+//     });
+//   }
+// };
+
 
 
 // Get all orders for current user
@@ -799,10 +808,9 @@ export const getOrderById = async (req: Request, res: Response) => {
     const { id } = req.params;
     
     const order = await Order.findById(id)
-      .select('user createdAt')
       .populate({
         path: 'items.product',
-        select: 'name description images'
+        select: 'name description images price discount'
       });
     
     if (!order) {
@@ -951,7 +959,7 @@ export const getOrderStatistics = async (req: Request, res: Response) => {
       { $group: {
         _id: "$items.product",
         totalQuantity: { $sum: "$items.quantity" },
-        totalRevenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } }
+        totalRevenue: { $sum: { $multiply: ["$items.finalPrice", "$items.quantity"] } }
       }},
       { $sort: { totalQuantity: -1 } },
       { $limit: 5 },
@@ -970,13 +978,87 @@ export const getOrderStatistics = async (req: Request, res: Response) => {
       }}
     ]);
     
+    // Calculate overall statistics including average order value
+    const overallStats = await Order.aggregate([
+      { $match: matchCondition },
+      { $group: {
+        _id: null,
+        totalOrders: { $sum: 1 },
+        totalRevenue: { $sum: "$totalAmount" },
+        averageOrderValue: { $avg: "$totalAmount" },
+        totalDiscount: {
+          $sum: {
+            $reduce: {
+              input: "$items",
+              initialValue: 0,
+              in: {
+                $add: [
+                  "$$value",
+                  {
+                    $multiply: [
+                      { 
+                        $subtract: [
+                          "$$this.price", 
+                          { $ifNull: ["$$this.finalPrice", "$$this.price"] }
+                        ] 
+                      },
+                      "$$this.quantity"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }}
+    ]);
+
+    // Calculate completed orders statistics (for more accurate revenue metrics)
+    const completedOrdersStats = await Order.aggregate([
+      { 
+        $match: { 
+          ...matchCondition, 
+          paymentStatus: PaymentStatus.COMPLETED 
+        } 
+      },
+      { $group: {
+        _id: null,
+        completedOrders: { $sum: 1 },
+        completedRevenue: { $sum: "$totalAmount" },
+        averageCompletedOrderValue: { $avg: "$totalAmount" }
+      }}
+    ]);
+    
+    // Get default values if no data exists
+    const stats = overallStats.length > 0 ? overallStats[0] : {
+      totalOrders: 0,
+      totalRevenue: 0,
+      averageOrderValue: 0,
+      totalDiscount: 0
+    };
+
+    const completedStats = completedOrdersStats.length > 0 ? completedOrdersStats[0] : {
+      completedOrders: 0,
+      completedRevenue: 0,
+      averageCompletedOrderValue: 0
+    };
+    
     res.status(200).json({
       success: true,
       message: 'Order statistics retrieved successfully',
       data: {
         ordersByStatus,
         ordersByDay,
-        topProducts
+        topProducts,
+        // Overall statistics
+        totalOrders: stats.totalOrders,
+        totalRevenue: stats.totalRevenue,
+        averageOrderValue: Math.round(stats.averageOrderValue * 100) / 100, // Round to 2 decimal places
+        totalDiscount: stats.totalDiscount,
+        // Completed orders statistics
+        completedOrders: completedStats.completedOrders,
+        completedRevenue: completedStats.completedRevenue,
+        averageCompletedOrderValue: Math.round(completedStats.averageCompletedOrderValue * 100) / 100
       }
     });
     return;
