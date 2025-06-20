@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
 import {prisma } from './config/prisma';
-
 import authRouter from './routes/auth';
 import productRouter from './routes/product';
 import { authenticate, authenticateAdmin } from './middlewares/auth.middleware';
