@@ -23,22 +23,28 @@ async function dbConnect() {
   }
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, {
-      bufferCommands: false,
-    }).then((mongoose) => {
+    const opts = {
+      bufferCommands: false, // This is causing the issue
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      family: 4 // Use IPv4, skip trying IPv6
+    };
+
+    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
+      console.log('MongoDB connected successfully');
       return mongoose;
     });
   }
   
   try {
     cached.conn = await cached.promise;
-    console.log('MongoDB connected successfully');
+    return cached.conn;
   } catch (error) {
     console.error('MongoDB connection error:', error);
+    cached.promise = null; // Reset promise on error
     throw error;
   }
-
-  return cached.conn;
 }
 
 mongoose.connection.on('error', (err) => {
@@ -47,6 +53,11 @@ mongoose.connection.on('error', (err) => {
 
 mongoose.connection.on('disconnected', () => {
   console.log('MongoDB disconnected');
+  cached.conn = null; // Reset cached connection
+});
+
+mongoose.connection.on('connected', () => {
+  console.log('MongoDB connected');
 });
 
 export default dbConnect;
