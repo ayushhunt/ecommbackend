@@ -71,7 +71,8 @@ export interface IProduct extends Document {
   
   price: number;
   category: string;
-  
+  subCategory?: string; 
+  childCategory?: string; 
   // Enhanced media system
   images: string[]; // Keep for backward compatibility
   media?: IMediaAsset[]; // New enhanced media system
@@ -211,7 +212,8 @@ const productSchema = new Schema<IProduct>({
   price: { type: Number, required: true, min: 0 },
   discount: { type: Number, default: 0, min: 0, max: 100 },
   category: { type: String, required: true },
-  
+  subCategory: { type: String, trim: true }, 
+  childCategory: { type: String, trim: true }, 
   // Enhanced media system
   images: { type: [String], required: true }, // Keep for backward compatibility
   media: { type: [mediaAssetSchema], default: [] },
