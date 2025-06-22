@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
 import {prisma } from './config/prisma';
-
 import authRouter from './routes/auth';
 import productRouter from './routes/product';
 import { authenticate, authenticateAdmin } from './middlewares/auth.middleware';
@@ -97,8 +96,24 @@ app.get('/mongoconnect', async (req, res) => {
 
 
 
-// Server Listening
-const PORT = process.env.PORT;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Start server only after database connection
+const startServer = async () => {
+  try {
+    // Connect to MongoDB first
+    await dbConnect();
+    console.log('MongoDB connection established');
+    
+    // Start the server only after successful DB connection
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+

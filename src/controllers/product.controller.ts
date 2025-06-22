@@ -3,6 +3,7 @@ import { Product, IProduct } from '../models/product';
 import { Types } from 'mongoose';
 import { generateSKU } from '../utils/skuGenerator';
 import path from 'path';
+import fs from 'fs';
 
 const SERVER_IP = process.env.SERVER_IP || 'http://localhost:3000';
 const UPLOAD_DIRECTORY = 'uploads/products';
@@ -73,7 +74,6 @@ const parseJSONField = (field: any, fieldName: string) => {
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const productData = req.body;
-
     // Parse complex JSON fields
     if (productData.detailedDescription) {
       productData.detailedDescription = parseJSONField(productData.detailedDescription, 'detailedDescription');
@@ -173,26 +173,27 @@ export const createProduct = async (req: Request, res: Response) => {
       productData.availableSizes = [];
     }
 
+
     // Handle uploaded media files
-    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+    if (req.files && Array.isArray(req.files) && req.files.length > 5) {
       const { mediaAssets, gallery, images } = processUploadedFiles(req.files as Express.Multer.File[]);
 
       // Set media data
       productData.media = mediaAssets;
       productData.gallery = gallery;
       productData.images = images.length > 0 ? images : ['placeholder-image.jpg']; // Ensure at least one image
-    } else if (!productData.images || productData.images.length === 0) {
+    } else if (!productData.images || productData.images.length < 5) {
       res.status(400).json({
         success: false,
-        message: 'At least one image is required for the product'
+        message: 'At least Five image is required for the product'
       });
       return;
     }
 
     // Generate SKU if not provided
-    if (!productData.sku) {
-      productData.sku = await generateSKU(productData.name);
-    }
+    // if (!productData.sku) {
+    //   productData.sku = await generateSKU(productData.name);
+    // }
 
     // Set default status if not provided
     if (!productData.status) {
@@ -217,11 +218,14 @@ export const createProduct = async (req: Request, res: Response) => {
   }
 };
 
+
 // Get all products with enhanced filtering
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const {
       category,
+      subCategory,
+      childCategory,
       brand,
       status,
       featured,
@@ -231,6 +235,9 @@ export const getProducts = async (req: Request, res: Response) => {
       minDiscount,
       maxDiscount,
       tags,
+      rating,
+      inStock,
+      discount,
       sort = 'createdAt',
       order = 'desc',
       page = 1,
@@ -241,7 +248,12 @@ export const getProducts = async (req: Request, res: Response) => {
     // Build filter object
     const filter: any = {};
 
+    // Category filtering (three-level hierarchy)
     if (category) filter.category = category;
+    if (subCategory) filter.subCategory = subCategory;
+    if (childCategory) filter.childCategory = childCategory;
+
+    // Basic filters
     if (brand) filter.brand = brand;
     if (status) filter.status = status;
     if (featured !== undefined) filter.featured = featured === 'true';
@@ -261,33 +273,157 @@ export const getProducts = async (req: Request, res: Response) => {
       if (maxDiscount) filter.discount.$lte = Number(maxDiscount);
     }
 
+    // Specific discount filter (for UI filter like "20% or more")
+    if (discount) {
+      filter.discount = { $gte: Number(discount) };
+    }
+
+    // Rating filtering
+    if (rating) {
+      filter.averageRating = { $gte: Number(rating) };
+    }
+
+    // Stock availability filtering
+    if (inStock === 'true') {
+      filter.$or = [
+        // Products without variants
+        { hasVariants: false, stock: { $gt: 0 } },
+        // Products with variants having stock
+        { 
+          hasVariants: true,
+          variants: { 
+            $elemMatch: { 
+              stock: { $gt: 0 },
+              isActive: true 
+            } 
+          }
+        }
+      ];
+    }
+
     // Tags filtering
     if (tags) {
       const tagArray = Array.isArray(tags) ? tags : [tags];
       filter.tags = { $in: tagArray };
     }
 
-    // Text search
+    // Text search (enhanced to include more fields)
     if (search) {
-      filter.$text = { $search: search as string };
+      const searchRegex = new RegExp(search as string, 'i');
+      filter.$or = [
+        { name: searchRegex },
+        { description: searchRegex },
+        { shortDescription: searchRegex },
+        { brand: searchRegex },
+        { category: searchRegex },
+        { subCategory: searchRegex },
+        { childCategory: searchRegex },
+        { tags: { $in: [searchRegex] } },
+        { 'specifications.name': searchRegex },
+        { 'specifications.value': searchRegex },
+        { features: { $in: [searchRegex] } }
+      ];
     }
 
     // Build sort object
     const sortOptions: any = {};
-    sortOptions[sort as string] = order === 'asc' ? 1 : -1;
+    
+    // Handle different sort options
+    switch (sort) {
+      case 'price':
+        sortOptions.price = order === 'asc' ? 1 : -1;
+        break;
+      case 'name':
+        sortOptions.name = order === 'asc' ? 1 : -1;
+        break;
+      case 'rating':
+        sortOptions.averageRating = order === 'asc' ? 1 : -1;
+        break;
+      case 'discount':
+        sortOptions.discount = order === 'asc' ? 1 : -1;
+        break;
+      case 'featured':
+        sortOptions.featured = -1; // Featured products first
+        sortOptions.createdAt = -1; // Then by newest
+        break;
+      case 'popularity':
+        sortOptions.reviewCount = -1;
+        sortOptions.averageRating = -1;
+        break;
+      default:
+        sortOptions[sort as string] = order === 'asc' ? 1 : -1;
+    }
 
     // Calculate pagination
     const pageNum = Number(page);
     const limitNum = Number(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Execute query
-    const products = await Product.find(filter)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(limitNum);
+    // Execute query with aggregation pipeline for better performance
+    const pipeline = [
+      { $match: filter },
+      { $sort: sortOptions },
+      { $skip: skip },
+      { $limit: limitNum },
+      {
+        $addFields: {
+          // Calculate final price after discount
+          finalPrice: {
+            $cond: {
+              if: { $and: [{ $gt: ["$discount", 0] }, { $lte: ["$discount", 100] }] },
+              then: { $multiply: ["$price", { $subtract: [1, { $divide: ["$discount", 100] }] }] },
+              else: "$price"
+            }
+          },
+          // Calculate total stock for variants
+          totalStock: {
+            $cond: {
+              if: "$hasVariants",
+              then: { $sum: "$variants.stock" },
+              else: "$stock"
+            }
+          },
+          // Check if product is in stock
+          isInStock: {
+            $cond: {
+              if: "$hasVariants",
+              then: { $gt: [{ $sum: "$variants.stock" }, 0] },
+              else: { $gt: ["$stock", 0] }
+            }
+          }
+        }
+      }
+    ];
 
-    const totalProducts = await Product.countDocuments(filter);
+    // Execute aggregation
+    const products = await Product.aggregate(pipeline);
+    
+    // Get total count for pagination
+    const countPipeline = [
+      { $match: filter },
+      { $count: "total" }
+    ];
+    
+    const countResult = await Product.aggregate(countPipeline);
+    const totalProducts = countResult.length > 0 ? countResult[0].total : 0;
+
+    // Get category statistics for additional info
+    const categoryStats = await Product.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory",
+            childCategory: "$childCategory"
+          },
+          count: { $sum: 1 },
+          avgPrice: { $avg: "$price" },
+          maxPrice: { $max: "$price" },
+          minPrice: { $min: "$price" }
+        }
+      }
+    ]);
 
     res.status(200).json({
       success: true,
@@ -297,7 +433,30 @@ export const getProducts = async (req: Request, res: Response) => {
         currentPage: pageNum,
         totalPages: Math.ceil(totalProducts / limitNum),
         totalItems: totalProducts,
-        limit: limitNum
+        limit: limitNum,
+        hasNextPage: pageNum < Math.ceil(totalProducts / limitNum),
+        hasPrevPage: pageNum > 1
+      },
+      filters: {
+        applied: {
+          category,
+          subCategory,
+          childCategory,
+          brand,
+          status,
+          featured,
+          isDigital,
+          minPrice,
+          maxPrice,
+          minDiscount,
+          maxDiscount,
+          rating,
+          inStock,
+          discount,
+          tags,
+          search
+        },
+        categoryStats: categoryStats.length > 0 ? categoryStats : undefined
       }
     });
   } catch (error: any) {
@@ -356,8 +515,132 @@ export const updateProduct = async (req: Request, res: Response) => {
       return;
     }
 
-    // Parse complex JSON fields, INCLUDING media and gallery
-    const jsonFields = ['detailedDescription', 'features', 'specifications', 'seo', 'tags', 'shipping', 'media', 'gallery'];
+    // Parse removal arrays from JSON strings
+    let mediaToRemove: string[] = [];
+    let galleryImagesToRemove: string[] = [];
+    let galleryVideosToRemove: string[] = [];
+    let galleryModelsToRemove: string[] = [];
+
+    try {
+      mediaToRemove = updateData.mediaToRemove ? 
+        (typeof updateData.mediaToRemove === 'string' ? 
+          JSON.parse(updateData.mediaToRemove) : updateData.mediaToRemove) : [];
+      
+      galleryImagesToRemove = updateData.galleryImagesToRemove ? 
+        (typeof updateData.galleryImagesToRemove === 'string' ? 
+          JSON.parse(updateData.galleryImagesToRemove) : updateData.galleryImagesToRemove) : [];
+      
+      galleryVideosToRemove = updateData.galleryVideosToRemove ? 
+        (typeof updateData.galleryVideosToRemove === 'string' ? 
+          JSON.parse(updateData.galleryVideosToRemove) : updateData.galleryVideosToRemove) : [];
+      
+      galleryModelsToRemove = updateData.galleryModelsToRemove ? 
+        (typeof updateData.galleryModelsToRemove === 'string' ? 
+          JSON.parse(updateData.galleryModelsToRemove) : updateData.galleryModelsToRemove) : [];
+    } catch (parseError) {
+      console.error('Error parsing removal arrays:', parseError);
+      res.status(400).json({
+        success: false,
+        message: 'Invalid removal data format'
+      });
+      return;
+    }
+
+    // Helper function to safely remove files
+    const unlinkFile = (fileUrl: string) => {
+      try {
+        // Extract the relative path from the URL
+        const urlParts = fileUrl.split('/');
+        const uploadsIndex = urlParts.findIndex(part => part === 'uploads');
+        
+        if (uploadsIndex !== -1) {
+          const relativePath = urlParts.slice(uploadsIndex).join('/');
+          const absolutePath = path.join(process.cwd(), relativePath);
+          
+          fs.unlink(absolutePath, (err) => {
+            if (err && err.code !== 'ENOENT') {
+              console.error('Failed to delete file:', absolutePath, err);
+            } else {
+              console.log('Successfully deleted file:', absolutePath);
+            }
+          });
+        } else {
+          console.warn('Could not extract file path from URL:', fileUrl);
+        }
+      } catch (error) {
+        console.error('Error processing file URL for deletion:', fileUrl, error);
+      }
+    };
+
+    // Helper function to get URL from media item
+    const getMediaUrl = (mediaItem: any): string => {
+      if (typeof mediaItem === 'string') return mediaItem;
+      return mediaItem?.url || mediaItem;
+    };
+
+    // Remove legacy media files
+    if (Array.isArray(mediaToRemove) && mediaToRemove.length > 0) {
+      mediaToRemove.forEach(unlinkFile);
+      product.media = (product.media || []).filter(m => {
+        const url = getMediaUrl(m);
+        return !mediaToRemove.includes(url);
+      });
+    }
+
+    // Initialize gallery if it doesn't exist
+    if (!product.gallery) {
+      product.gallery = { images: [], videos: [], models3D: [] };
+    }
+
+    // Remove gallery images
+    if (Array.isArray(galleryImagesToRemove) && galleryImagesToRemove.length > 0) {
+      galleryImagesToRemove.forEach(unlinkFile);
+      product.gallery.images = (product.gallery.images || []).filter(img => {
+        const url = getMediaUrl(img);
+        return !galleryImagesToRemove.includes(url);
+      });
+    }
+
+    // Remove gallery videos
+    if (Array.isArray(galleryVideosToRemove) && galleryVideosToRemove.length > 0) {
+      galleryVideosToRemove.forEach(unlinkFile);
+      product.gallery.videos = (product.gallery.videos || []).filter(v => {
+        const url = getMediaUrl(v);
+        return !galleryVideosToRemove.includes(url);
+      });
+    }
+
+    // Remove gallery 3D models
+    if (Array.isArray(galleryModelsToRemove) && galleryModelsToRemove.length > 0) {
+      galleryModelsToRemove.forEach(unlinkFile);
+      product.gallery.models3D = (product.gallery.models3D || []).filter(m => {
+        const url = getMediaUrl(m);
+        return !galleryModelsToRemove.includes(url);
+      });
+    }
+
+    // Handle newly uploaded files
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      const { mediaAssets, gallery, images } = processUploadedFiles(req.files as Express.Multer.File[]);
+      
+      // Add new media to existing arrays
+      product.media = [...(product.media || []), ...mediaAssets];
+      product.gallery = {
+        images: [...(product.gallery.images || []), ...gallery.images],
+        videos: [...(product.gallery.videos || []), ...gallery.videos],
+        models3D: [...(product.gallery.models3D || []), ...gallery.models3D]
+      };
+      
+      // Update legacy images array
+      if (product.images) {
+        product.images = [...product.images, ...images];
+      } else {
+        product.images = images;
+      }
+    }
+
+    // Parse complex JSON fields (excluding the removal arrays we already handled)
+    const jsonFields = ['detailedDescription', 'features', 'specifications', 'seo', 'tags', 'shipping', 'variants'];
     jsonFields.forEach(field => {
       if (updateData[field]) {
         updateData[field] = parseJSONField(updateData[field], field);
@@ -369,7 +652,15 @@ export const updateProduct = async (req: Request, res: Response) => {
       updateData.hasVariants = updateData.hasVariants === 'true' || updateData.hasVariants === true;
 
       if (updateData.hasVariants && updateData.variants) {
-        updateData.variants = parseJSONField(updateData.variants, 'variants');
+        if (!Array.isArray(updateData.variants)) {
+          res.status(400).json({
+            success: false,
+            message: 'Variants must be an array when hasVariants is true'
+          });
+          return;
+        }
+      } else if (updateData.hasVariants) {
+        updateData.variants = [];
       }
     }
 
@@ -399,35 +690,6 @@ export const updateProduct = async (req: Request, res: Response) => {
       }
     }
 
-    // Handle new media uploads
-    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-      const { mediaAssets, gallery, images } = processUploadedFiles(req.files as Express.Multer.File[]);
-
-      // Merge with existing media or replace
-      // The frontend now sends the *current* state of existing media + new media in the 'media' and 'gallery' fields
-      // So we just need to add the newly uploaded files to the lists received from the frontend.
-      // The frontend is responsible for sending the list of existing media that should *remain*.
-      updateData.media = [...(updateData.media || []), ...mediaAssets];
-      updateData.gallery = {
-          images: [...(updateData.gallery?.images || []), ...gallery.images],
-          videos: [...(updateData.gallery?.videos || []), ...gallery.videos],
-          models3D: [...(updateData.gallery?.models3D || []), ...gallery.models3D]
-      };
-      updateData.images = [...(updateData.images || []), ...images]; // Update legacy images array too
-    } else {
-        // If no new files are uploaded, ensure media/gallery/images are still parsed if sent
-        // This is already handled by the jsonFields parsing above.
-        // Ensure images array is not empty if no new images and no existing images were sent
-         if (!updateData.images || updateData.images.length === 0) {
-             // This case might happen if all existing images were removed and no new ones added
-             // You might want to enforce at least one image or handle this case specifically
-             // For now, let's allow empty if the frontend explicitly sends an empty array
-             // but log a warning or handle it based on your schema requirements.
-             console.warn(`Product ${id} updated with no images.`);
-         }
-    }
-
-
     // Handle variants update
     if (updateData.hasVariants) {
       if (updateData.variants && Array.isArray(updateData.variants)) {
@@ -435,91 +697,89 @@ export const updateProduct = async (req: Request, res: Response) => {
           product.variants?.map(v => [v._id?.toString(), v.sku]) || []
         );
 
-        updateData.variants = await Promise.all(
-          updateData.variants.map(async (v: any) => {
-            if (typeof v.stock !== 'number' || v.stock < 0) {
-              res.status(400).json({
-                success: false,
-                message: 'Each variant must have a non-negative stock value'
-              });
-              throw new Error('Invalid variant stock'); // Throw to stop processing
-            }
+        try {
+          updateData.variants = await Promise.all(
+            updateData.variants.map(async (v: any) => {
+              if (typeof v.stock !== 'number' || v.stock < 0) {
+                throw new Error('Each variant must have a non-negative stock value');
+              }
 
-            // Use existing SKU if variant has an _id and it matches an existing one
-            const sku = (v._id && existingSkuMap.has(v._id.toString()))
-              ? existingSkuMap.get(v._id.toString())
-              : await generateSKU(product.name, v.color, v.size); // Generate new SKU for new variants
+              // Use existing SKU if variant has an _id and it matches an existing one
+              const sku = (v._id && existingSkuMap.has(v._id.toString()))
+                ? existingSkuMap.get(v._id.toString())
+                : await generateSKU(product.name, v.color, v.size);
 
-            return {
-              ...v,
-              sku,
-              _id: v._id ? new Types.ObjectId(v._id) : new Types.ObjectId(), // Ensure _id is ObjectId
-              price: v.price ? Number(v.price) : undefined
-            };
-          })
-        );
-      } else if (updateData.hasVariants && !Array.isArray(updateData.variants)) {
-         res.status(400).json({
-           success: false,
-           message: 'Variants array is required if hasVariants is true'
-         });
-         return;
+              return {
+                ...v,
+                sku,
+                _id: v._id ? new Types.ObjectId(v._id) : new Types.ObjectId(),
+                price: v.price ? Number(v.price) : undefined
+              };
+            })
+          );
+        } catch (variantError: any) {
+          res.status(400).json({
+            success: false,
+            message: variantError.message || 'Invalid variant data'
+          });
+          return;
+        }
       }
     } else {
       updateData.variants = [];
-      updateData.availableColors = []; // Clear variant-specific fields
+      updateData.availableColors = [];
       updateData.availableSizes = [];
+      
       // Validate stock for non-variant product
       if (updateData.stock !== undefined && (typeof updateData.stock !== 'number' || updateData.stock < 0)) {
         res.status(400).json({
           success: false,
-          message: 'Stock must be a non-negative number if hasVariants is false'
+          message: 'Stock must be a non-negative number when hasVariants is false'
         });
         return;
       }
     }
 
-    // Update the product
-    // Using Object.assign might overwrite fields you didn't intend to if updateData is missing them.
-    // A safer approach is to explicitly update fields or use findByIdAndUpdate with $set.
-    // Let's use findByIdAndUpdate for clarity and to handle potential partial updates better.
-
-    // Remove _id from updateData as it's in the params
+    // Remove processed fields from updateData
+    delete updateData.mediaToRemove;
+    delete updateData.galleryImagesToRemove;
+    delete updateData.galleryVideosToRemove;
+    delete updateData.galleryModelsToRemove;
     delete updateData._id;
 
-    const updatedProduct = await Product.findByIdAndUpdate(id, { $set: updateData }, { new: true, runValidators: true });
+    // Apply updates to the product document
+    Object.keys(updateData).forEach(key => {
+      // Skip media and gallery since we handled them separately
+      if (!['media', 'gallery', 'images'].includes(key)) {
+        (product as any)[key] = updateData[key];
+      }
+    });
 
-    if (!updatedProduct) {
-         // Should not happen if product was found initially, but good practice
-         res.status(404).json({
-             success: false,
-             message: 'Product not found after update attempt'
-         });
-         return;
-    }
-
+    // Save the updated product
+    const updatedProduct = await product.save();
 
     res.status(200).json({
       success: true,
       message: 'Product updated successfully',
       data: updatedProduct
     });
+
   } catch (error: any) {
     console.error('Error updating product:', error);
-    // Check for Mongoose validation errors specifically
+    
     if (error.name === 'ValidationError') {
-        const messages = Object.values(error.errors).map((val: any) => val.message);
-        res.status(400).json({
-            success: false,
-            message: 'Validation Error: ' + messages.join(', '),
-            error: process.env.NODE_ENV === 'development' ? error : undefined
-        });
+      const messages = Object.values(error.errors).map((val: any) => val.message);
+      res.status(400).json({
+        success: false,
+        message: 'Validation Error: ' + messages.join(', '),
+        error: process.env.NODE_ENV === 'development' ? error : undefined
+      });
     } else {
-        res.status(400).json({ // Use 400 for client errors like invalid data format
-            success: false,
-            message: error.message || 'Failed to update product',
-            error: process.env.NODE_ENV === 'development' ? error : undefined
-        });
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to update product',
+        error: process.env.NODE_ENV === 'development' ? error : undefined
+      });
     }
   }
 };
