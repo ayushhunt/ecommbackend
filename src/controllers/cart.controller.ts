@@ -416,7 +416,10 @@ export const initiateCheckout = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id; 
     const { shippingAddress, paymentMethod } = req.body;
-
+     if (!shippingAddress?.name || shippingAddress.name.trim() === '') {
+      shippingAddress.name = 'Home';
+    }
+    console.log(shippingAddress);
     // Validate input
     if (!shippingAddress || !paymentMethod) {
       res.status(400).json({
@@ -425,7 +428,10 @@ export const initiateCheckout = async (req: Request, res: Response) => {
       });
       return;
     }
-    
+    if (!shippingAddress?.name || shippingAddress.name.trim() === '') {
+      shippingAddress.name = 'Home';
+    }
+    console.log(shippingAddress);
     // Get cart with populated product details
     const cart = await Cart.findOne({ userId }).populate<{ items: PopulatedCartItem[] }>({
       path: 'items.product',

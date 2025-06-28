@@ -608,7 +608,7 @@ export const getGeographicDistribution = async (req: Request, res: Response) => 
   }
 };
 
-// Search users (advanced search)
+// Search users (advanced search) - FIXED
 export const searchUsers = async (req: Request, res: Response) => {
   try {
     const { q } = req.query;
@@ -633,7 +633,10 @@ export const searchUsers = async (req: Request, res: Response) => {
                 OR: [
                   { city: { contains: q, mode: 'insensitive' } },
                   { state: { contains: q, mode: 'insensitive' } },
-                  { street: { contains: q, mode: 'insensitive' } }
+                  { addressLine1: { contains: q, mode: 'insensitive' } }, // ✅ Fixed: street → addressLine1
+                  { addressLine2: { contains: q, mode: 'insensitive' } }, // ✅ Added: search in addressLine2
+                  { landmark: { contains: q, mode: 'insensitive' } },      // ✅ Added: search in landmark
+                  { neighborhood: { contains: q, mode: 'insensitive' } }   // ✅ Added: search in neighborhood
                 ]
               }
             }
@@ -651,9 +654,14 @@ export const searchUsers = async (req: Request, res: Response) => {
         addresses: {
           select: {
             city: true,
-            state: true
+            state: true,
+            addressLine1: true, // ✅ Added for better context
+            country: true       // ✅ Added for better context
           },
-          take: 1
+          take: 1,
+          where: {
+            isActive: true // ✅ Only show active addresses
+          }
         }
       },
       take: 50

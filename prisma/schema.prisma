@@ -20,6 +20,15 @@ model Test {
   email String
 }
 
+enum AddressType {
+  HOME
+  OFFICE
+  FRIEND
+  FAMILY
+  BUSINESS
+  OTHER
+}
+
 model User {
   id            String    @id @default(uuid())
   provider      String    // "email", "google", "github"
@@ -42,13 +51,24 @@ model Address {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  street    String
+  name         String @default("Home")     // Custom name like "Home", "Office", "Mom's House"
+  addressType  AddressType @default(HOME)
+  addressLine1 String      // Primary street address
+  addressLine2 String?     // Apartment, suite, unit, building, floor, etc.
+  landmark     String?
   phoneNumber   String?
-  city      String
-  state     String
-  zip       String
+  neighborhood String?     // Area/locality/suburb
+  city         String      // City/town
+  state        String?     // State/province/region (optional for some countries)
+  postalCode   String?     // ZIP/postal code (optional for some countries)
+  country      String      @default("IN") 
+  isDefault    Boolean     @default(false)  // Add this line
+  isActive     Boolean     @default(true)   // Optional: Add this too for soft delete
+  deliveryInstructions String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@index([userId])
+  @@index([country])
 }
 
 model RefreshToken {
