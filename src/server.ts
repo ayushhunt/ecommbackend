@@ -16,14 +16,53 @@ import profileRouter from './routes/profile';
 import adminRouter from './routes/admin';
 import path from 'path';
 import contactRouter from './routes/contact';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import hpp from 'hpp';
+import slowDown from 'express-slow-down';
+
 
 // Load environment variables
 dotenv.config();
-dbConnect();
+
 
 const app = express();
 
+
+
+
+app.use(helmet()); 
+
+
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+});
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 100, 
+  message: 'Too many requests, please try again later.'
+});
+
+app.use(limiter);
+
+
+app.use(hpp());
+
+
+const speedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000,
+  delayAfter: 50,
+  delayMs: 500 
+});
+
+app.use(speedLimiter);
+
+
+
 
 
 // Middleware

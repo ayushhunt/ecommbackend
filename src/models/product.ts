@@ -215,7 +215,7 @@ const productSchema = new Schema<IProduct>({
   subCategory: { type: String, trim: true }, 
   childCategory: { type: String, trim: true }, 
   // Enhanced media system
-  images: { type: [String], required: true }, // Keep for backward compatibility
+  images: { type: [String],required:false,default: [] }, // Keep for backward compatibility
   media: { type: [mediaAssetSchema], default: [] },
   gallery: {
     images: { type: [mediaAssetSchema], default: [] },

@@ -15,6 +15,7 @@ export interface IWishlistItem {
   addedAt: Date;
 }
 
+
 // Interface for wishlist document
 export interface IWishlist extends Document {
   userId: string;
@@ -104,7 +105,7 @@ WishlistSchema.pre('save', function(this: IWishlist, next) {
 WishlistSchema.methods.populateProducts = async function() {
   return await this.populate({
     path: 'items.product',
-    select: 'name images price discount hasVariants variants'
+    select: 'name images price discount hasVariants variants stock lowStockThreshold',
   });
 };
 
