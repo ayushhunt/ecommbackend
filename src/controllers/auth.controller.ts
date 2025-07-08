@@ -360,7 +360,7 @@ export const googleCallback= async (req: Request, res: Response) => {
     // Send your application's tokens back to the frontend
     // You might redirect to a frontend page with tokens in query params or body,
     // or set httpOnly cookies. Using httpOnly cookies for refresh tokens is recommended for security.
-    res.redirect(`http://localhost:3003/google?accessToken=${accessToken}`);
+    res.redirect(`http://69.62.85.32:3003/google?accessToken=${accessToken}`);
   } catch (error) {
     console.error('Error during Google authentication callback:', error);
     res.status(500).send('Authentication failed.');
