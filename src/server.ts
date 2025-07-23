@@ -20,6 +20,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import hpp from 'hpp';
 import slowDown from 'express-slow-down';
+import blogRouter from './routes/blog';
 
 
 // Load environment variables
@@ -99,7 +100,8 @@ app.use("/v1/wish",authenticate,wishlistRouter);
 app.use("/v1/rec",recommendationRouter);
 app.use("/v1/user",authenticate,profileRouter)
 app.use('/v1/admin/users',authenticateAdmin,adminRouter)
-app.use('/v1', contactRouter); // Add this line
+app.use('/v1', contactRouter); 
+app.use('/v1/blogs',blogRouter);
 
 
 
