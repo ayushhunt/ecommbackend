@@ -44,7 +44,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
-  max: 100, 
+  max: 300, 
   message: 'Too many requests, please try again later.'
 });
 
@@ -57,7 +57,7 @@ app.use(hpp());
 const speedLimiter = slowDown({
   windowMs: 15 * 60 * 1000,
   delayAfter: 50,
-  delayMs: 500 
+  delayMs: 300 
 });
 
 app.use(speedLimiter);
